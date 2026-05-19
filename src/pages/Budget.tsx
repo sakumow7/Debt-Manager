@@ -4,7 +4,7 @@ import { Plus, Trash2, PiggyBank, TrendingUp, TrendingDown, ChevronLeft, Chevron
 import type { MonthlyBudget, ExpenseItem, AppSettings } from '../types';
 import { EXPENSE_CATEGORIES } from '../types';
 import { formatCurrency } from '../lib/calculations';
-import { generateId, currentMonth } from '../lib/storage';
+import { generateId, currentMonth } from '../lib/utils';
 
 interface Props {
   budgets: MonthlyBudget[];

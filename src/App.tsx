@@ -1,5 +1,5 @@
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
-import Sidebar from './components/Sidebar';
+import Sidebar from './components/layout/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Debts from './pages/Debts';
 import AttackPlan from './pages/AttackPlan';
@@ -8,7 +8,7 @@ import Tips from './pages/Tips';
 import Chat from './pages/Chat';
 import Settings from './pages/Settings';
 import type { Debt, MonthlyBudget, AppSettings, ChatMessage } from './types';
-import { useLocalStorage } from './lib/storage';
+import { useLocalStorage } from './hooks/useLocalStorage';
 
 const DEFAULT_SETTINGS: AppSettings = {
   extraMonthlyPayment: 0,

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw } from 'lucide-react';
-import Modal from '../components/Modal';
+import Modal from '../components/ui/Modal';
 import type { Debt, DebtType, AppSettings } from '../types';
 import { DEBT_TYPE_LABELS, DEBT_COLORS } from '../types';
 import { formatCurrency, formatDate, getDebtProgress, getDaysUntilDue } from '../lib/calculations';
-import { generateId } from '../lib/storage';
+import { generateId } from '../lib/utils';
 
 const DEBT_TYPES: DebtType[] = ['credit_card', 'student_loan', 'mortgage', 'auto', 'personal', 'medical', 'other'];
 

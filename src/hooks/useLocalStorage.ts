@@ -1,6 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
-export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((prev: T) => T)) => void] {
+/**
+ * Persists state to localStorage and keeps it in sync across re-renders.
+ * Safe against quota errors and private-mode restrictions.
+ */
+export function useLocalStorage<T>(
+  key: string,
+  initialValue: T
+): [T, (value: T | ((prev: T) => T)) => void] {
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
@@ -13,11 +20,12 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T 
   const setValue = useCallback(
     (value: T | ((prev: T) => T)) => {
       setStoredValue((prev) => {
-        const next = typeof value === 'function' ? (value as (p: T) => T)(prev) : value;
+        const next =
+          typeof value === 'function' ? (value as (p: T) => T)(prev) : value;
         try {
           window.localStorage.setItem(key, JSON.stringify(next));
         } catch {
-          // quota exceeded or private mode
+          // Silently ignore quota exceeded or private-mode errors
         }
         return next;
       });
@@ -26,12 +34,4 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T 
   );
 
   return [storedValue, setValue];
-}
-
-export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-export function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7);
 }

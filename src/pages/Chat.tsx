@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, RefreshCw, MessageCircle, AlertCircle } from 'lucide-react';
 import type { Debt, ChatMessage, MonthlyBudget } from '../types';
 import { generateDebtContext, formatCurrency } from '../lib/calculations';
-import { generateId } from '../lib/storage';
+import { generateId } from '../lib/utils';
 
 interface Props {
   debts: Debt[];
