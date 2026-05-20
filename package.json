@@ -64,12 +64,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "appx",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "signAndEditExecutable": false
