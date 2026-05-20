@@ -1,0 +1,73 @@
+{
+  "name": "chisel",
+  "version": "1.0.3",
+  "description": "Chisel Finance — Cut through debt. A precision debt payoff desktop application.",
+  "main": "electron-dist/electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1",
+    "lucide-react": "^0.294.0",
+    "postcss": "^8.4.33",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.3",
+    "recharts": "^2.10.3",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.chiselfinance.app",
+    "productName": "Chisel Finance",
+    "copyright": "Copyright © 2025",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron-dist/**",
+      "node_modules/**",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron-dist/electron/main.js"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "appx", "arch": ["x64"] }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "appx": {
+      "applicationId": "ChiselFinance",
+      "backgroundColor": "#111827",
+      "displayName": "Chisel Finance",
+      "identityName": "ChiselFinance",
+      "publisherDisplayName": "YOUR_DISPLAY_NAME",
+      "publisher": "CN=YOUR_CN_STRING"
+    }
+  }
+}

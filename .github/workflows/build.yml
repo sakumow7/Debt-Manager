@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck-and-build:
+    name: Type Check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check renderer
+        run: npx tsc --noEmit
+
+      - name: Type check Electron
+        run: npx tsc -p tsconfig.electron.json --noEmit
+
+      - name: Build renderer
+        run: npx vite build
+
+      - name: Compile Electron
+        run: npx tsc -p tsconfig.electron.json
+
+  package-windows:
+    name: Package Windows Installer
+    runs-on: windows-latest
+    needs: typecheck-and-build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package
+        run: npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debt-manager-windows
+          path: release/*.exe
+          retention-days: 30
