@@ -1,5 +1,37 @@
-import type { Debt, AttackPlanResult, MonthlyScheduleItem, DebtPayoffInfo } from '../types';
+/**
+ * Core financial calculation engine.
+ *
+ * Implements month-by-month debt payoff simulation for the Avalanche (highest APR
+ * first), Snowball (lowest balance first), and Minimum-only strategies. Also
+ * provides formatting helpers and the AI context builder used by the chat feature.
+ */
+import type { Debt, AttackPlanResult, MonthlyScheduleItem, DebtPayoffInfo, ScheduledPayment } from '../types';
 
+// ─── Scheduled payment helpers ────────────────────────────────────────────────
+
+/**
+ * Converts persisted ScheduledPayment records into the simulation-month format
+ * used by calculatePayoffPlan. Month 1 = the current month.
+ * Payments scheduled in the past or today are placed at month 1 so they are
+ * applied immediately in the projection.
+ */
+export function scheduledToLumps(
+  payments: ScheduledPayment[]
+): { debtId: string; amount: number; month: number }[] {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return payments
+    .filter((p) => p.status === 'pending')
+    .map((p) => {
+      const target = new Date(p.scheduledDate + 'T00:00:00');
+      const diffDays = (target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      const month = Math.max(1, Math.round(diffDays / 30.44));
+      return { debtId: p.debtId, amount: p.amount, month };
+    });
+}
+
+// Hard cap to prevent an infinite loop if a debt's minimum payment never covers
+// its interest (e.g., a 0%-minimum card with a non-zero balance).
 const MAX_MONTHS = 600;
 
 interface DebtState {
@@ -27,7 +59,8 @@ function emptyResult(strategy: AttackPlanResult['strategy']): AttackPlanResult {
 export function calculatePayoffPlan(
   debts: Debt[],
   extraMonthly: number,
-  strategy: AttackPlanResult['strategy']
+  strategy: AttackPlanResult['strategy'],
+  lumpSums: { debtId: string; amount: number; month: number }[] = []
 ): AttackPlanResult {
   const activeDebts = debts.filter((d) => d.balance > 0);
   if (activeDebts.length === 0) return emptyResult(strategy);
@@ -53,6 +86,22 @@ export function calculatePayoffPlan(
     month++;
     let interestThisMonth = 0;
 
+    // Apply any lump-sum payments that fall in this simulation month.
+    // These reduce the balance before the regular payment phase so interest
+    // is not charged on principal the user has already paid.
+    for (const lump of lumpSums.filter((l) => l.month === month)) {
+      const state = states.find((s) => s.id === lump.debtId);
+      if (state && state.balance > 0.01) {
+        state.balance = Math.max(0, state.balance - lump.amount);
+        if (state.balance < 0.01) {
+          state.balance = 0;
+          if (!state.paidMonth) state.paidMonth = month;
+        }
+      }
+    }
+
+    // Phase 1: accrue interest on every active debt before applying any payments.
+    // This matches standard amortization — interest posts first, then payments reduce principal.
     for (const s of states) {
       if (s.balance < 0.01) continue;
       const interest = s.balance * s.monthlyRate;
@@ -62,6 +111,8 @@ export function calculatePayoffPlan(
       interestThisMonth += interest;
     }
 
+    // Phase 2: sort remaining debts by the chosen strategy.
+    // Index 0 is the "attack" target that receives all extra budget; the rest get minimums only.
     const active = states
       .filter((s) => s.balance > 0.01)
       .sort((a, b) => {
@@ -73,6 +124,7 @@ export function calculatePayoffPlan(
     let budget = monthlyBudget;
     const payments: MonthlyScheduleItem['payments'] = [];
 
+    // Pay minimums on all non-target debts first to preserve the monthly budget guarantee.
     for (let i = 1; i < active.length; i++) {
       const s = active[i];
       const pmt = Math.min(s.minPayment, s.balance);
@@ -82,6 +134,7 @@ export function calculatePayoffPlan(
       payments.push({ debtId: s.id, payment: pmt, interest: 0, principal: pmt, balance: s.balance });
     }
 
+    // The attack debt gets whatever budget remains after covering all minimums.
     if (active.length > 0) {
       const target = active[0];
       const pmt = Math.min(Math.max(0, budget), target.balance);
@@ -125,6 +178,10 @@ export function calculatePayoffPlan(
   };
 }
 
+/**
+ * Downsamples multiple payoff schedules into a single chart-ready dataset.
+ * All three strategy lines share the same month axis so Recharts can overlay them.
+ */
 export function getPayoffChartData(
   plans: { label: string; result: AttackPlanResult; color: string }[],
   samplePoints = 60
@@ -191,7 +248,14 @@ export function getTotalPaid(debt: Debt): number {
   return debt.payments.reduce((sum, p) => sum + p.amount, 0);
 }
 
-export function generateDebtContext(debts: Debt[], budget?: { income: number; totalExpenses: number }): string {
+/**
+ * Builds a plain-text financial summary injected into the AI system prompt so
+ * Claude has full context about the user's debts and monthly budget.
+ */
+export function generateDebtContext(
+  debts: Debt[],
+  budget?: { income: number; extraIncome: number; totalExpenses: number }
+): string {
   if (debts.length === 0) return 'The user has no debts entered yet.';
 
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
@@ -211,9 +275,11 @@ ${debts
   .join('\n')}`;
 
   if (budget) {
-    const surplus = budget.income - budget.totalExpenses;
+    const totalIncome = budget.income + budget.extraIncome;
+    const surplus = totalIncome - budget.totalExpenses;
     ctx += `\n\nMonthly Budget:
-Income: $${budget.income.toLocaleString()}
+Regular Income: $${budget.income.toLocaleString()}${budget.extraIncome > 0 ? `\nExtra / One-Time Income: $${budget.extraIncome.toLocaleString()}` : ''}
+Total Income: $${totalIncome.toLocaleString()}
 Total Expenses: $${budget.totalExpenses.toLocaleString()}
 Monthly Surplus: $${surplus.toLocaleString()}`;
   }

@@ -1,11 +1,19 @@
+/**
+ * Dashboard — the app's home screen.
+ *
+ * Aggregates key metrics (total debt, payoff date, monthly payment, average APR),
+ * a downsampled area chart of the projected payoff timeline, a donut chart of
+ * debt breakdown by balance, per-debt progress bars, and upcoming payment reminders.
+ */
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts';
-import { TrendingDown, DollarSign, Calendar, Percent, ArrowRight, AlertCircle } from 'lucide-react';
-import type { Debt, MonthlyBudget, AppSettings } from '../types';
+import { DollarSign, Calendar, Percent, ArrowRight, AlertCircle, TrendingDown, CalendarCheck, CheckCircle2 } from 'lucide-react';
+import { ChiselIcon } from '../components/ui/ChiselIcon';
+import type { Debt, MonthlyBudget, AppSettings, ScheduledPayment } from '../types';
 import {
   calculatePayoffPlan,
   formatCurrency,
@@ -13,12 +21,15 @@ import {
   monthsToYearsMonths,
   getDebtProgress,
   getDaysUntilDue,
+  scheduledToLumps,
 } from '../lib/calculations';
 
 interface Props {
   debts: Debt[];
   budgets: MonthlyBudget[];
   settings: AppSettings;
+  scheduledPayments: ScheduledPayment[];
+  onApplyScheduled: (id: string) => void;
 }
 
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string; sub?: string; icon: React.ElementType; color: string }) {
@@ -47,14 +58,14 @@ function CustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
   return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11}>{`${(percent * 100).toFixed(0)}%`}</text>;
 }
 
-export default function Dashboard({ debts, budgets, settings }: Props) {
+export default function Dashboard({ debts, budgets, settings, scheduledPayments, onApplyScheduled }: Props) {
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   const totalMin = debts.reduce((s, d) => s + d.minimumPayment, 0);
   const avgRate = debts.length ? debts.reduce((s, d) => s + d.interestRate, 0) / debts.length : 0;
 
   const bestPlan = useMemo(
-    () => calculatePayoffPlan(debts, settings.extraMonthlyPayment, settings.preferredStrategy),
-    [debts, settings]
+    () => calculatePayoffPlan(debts, settings.extraMonthlyPayment, settings.preferredStrategy, scheduledToLumps(scheduledPayments)),
+    [debts, settings, scheduledPayments]
   );
 
   const currentBudget = budgets.find((b) => b.month === new Date().toISOString().slice(0, 7));
@@ -64,6 +75,7 @@ export default function Dashboard({ debts, budgets, settings }: Props) {
   const chartData = useMemo(() => {
     const schedule = bestPlan.monthlySchedule;
     if (schedule.length === 0) return [];
+    // Downsample to ~24 points so the chart doesn't render hundreds of tiny segments.
     const step = Math.max(1, Math.floor(schedule.length / 24));
     return [
       { month: 'Now', balance: debts.reduce((s, d) => s + d.balance, 0) },
@@ -76,18 +88,47 @@ export default function Dashboard({ debts, budgets, settings }: Props) {
 
   const pieData = debts.map((d) => ({ name: d.name, value: d.balance, color: d.color }));
 
-  const upcomingPayments = debts
-    .map((d) => ({ debt: d, daysUntil: getDaysUntilDue(d.dueDate) }))
+  // Merge regular monthly due dates with one-time scheduled payments, sorted by days until due.
+  const upcomingRegular = debts.map((d) => ({
+    kind: 'due' as const,
+    key: d.id,
+    label: d.name,
+    sub: `Due on ${d.dueDate}${['st', 'nd', 'rd'][d.dueDate - 1] ?? 'th'}`,
+    amount: d.minimumPayment,
+    color: d.color,
+    daysUntil: getDaysUntilDue(d.dueDate),
+    scheduledId: null as null,
+  }));
+
+  const upcomingScheduled = scheduledPayments
+    .filter((p) => p.status === 'pending')
+    .map((p) => {
+      const debt = debts.find((d) => d.id === p.debtId);
+      const target = new Date(p.scheduledDate + 'T00:00:00');
+      const daysUntil = Math.ceil((target.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      return {
+        kind: 'scheduled' as const,
+        key: p.id,
+        label: debt?.name ?? 'Unknown debt',
+        sub: p.note ?? 'Scheduled payment',
+        amount: p.amount,
+        color: debt?.color ?? '#f59e0b',
+        daysUntil,
+        scheduledId: p.id,
+      };
+    });
+
+  const upcomingPayments = [...upcomingRegular, ...upcomingScheduled]
     .sort((a, b) => a.daysUntil - b.daysUntil)
-    .slice(0, 4);
+    .slice(0, 5);
 
   if (debts.length === 0) {
     return (
       <div className="p-8 flex flex-col items-center justify-center min-h-screen">
-        <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center mb-4">
-          <TrendingDown size={32} className="text-emerald-400" />
+        <div className="w-16 h-16 bg-gradient-to-br from-emerald-500/20 to-emerald-700/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center mb-4">
+          <ChiselIcon size={34} className="text-emerald-400" />
         </div>
-        <h1 className="text-white text-2xl font-bold mb-2">Welcome to Debt Manager</h1>
+        <h1 className="text-white text-2xl font-bold mb-2">Welcome to Chisel</h1>
         <p className="text-gray-400 text-center max-w-md mb-6">
           Start by adding your debts to see your personalized payoff plan, progress tracking, and AI-powered money-saving tips.
         </p>
@@ -160,18 +201,27 @@ export default function Dashboard({ debts, budgets, settings }: Props) {
         </div>
 
         {/* Debt Breakdown */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-          <h2 className="text-white font-semibold mb-4">Debt Breakdown</h2>
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col">
+          <h2 className="text-white font-semibold mb-2">Debt Breakdown</h2>
           {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" labelLine={false} label={CustomLabel}>
-                  {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                </Pie>
-                <Legend formatter={(v) => <span className="text-gray-300 text-xs">{v}</span>} />
-                <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#fff' }} formatter={(v: number) => [formatCurrency(v)]} />
-              </PieChart>
-            </ResponsiveContainer>
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" labelLine={false} label={CustomLabel}>
+                    {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#fff' }} formatter={(v: number) => [formatCurrency(v)]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+                {pieData.map((entry, i) => (
+                  <div key={i} className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: entry.color }} />
+                    <span className="text-gray-400 text-xs truncate max-w-[110px]">{entry.name}</span>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : null}
         </div>
       </div>
@@ -210,20 +260,48 @@ export default function Dashboard({ debts, budgets, settings }: Props) {
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
           <h2 className="text-white font-semibold mb-4">Upcoming Payments</h2>
           <div className="space-y-3">
-            {upcomingPayments.map(({ debt, daysUntil }) => (
-              <div key={debt.id} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: `${debt.color}20`, color: debt.color }}>
-                    {daysUntil}d
+            {upcomingPayments.map((item) => {
+              const isOverdue = item.daysUntil <= 0;
+              return (
+                <div key={item.key} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                  <div className="flex items-center gap-3">
+                    {item.kind === 'scheduled' ? (
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${item.color}20` }}>
+                        <CalendarCheck size={15} style={{ color: item.color }} />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0" style={{ background: `${item.color}20`, color: item.color }}>
+                        {item.daysUntil}d
+                      </div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-gray-200 text-sm font-medium">{item.label}</p>
+                        {item.kind === 'scheduled' && (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400">lump sum</span>
+                        )}
+                      </div>
+                      <p className="text-gray-500 text-xs">
+                        {item.kind === 'scheduled'
+                          ? isOverdue ? 'Ready to apply' : `Scheduled · ${item.daysUntil}d away`
+                          : item.sub}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-gray-200 text-sm font-medium">{debt.name}</p>
-                    <p className="text-gray-500 text-xs">Due on {debt.dueDate}{['st', 'nd', 'rd'][debt.dueDate - 1] || 'th'}</p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-white font-semibold text-sm">{formatCurrency(item.amount)}</span>
+                    {item.kind === 'scheduled' && item.scheduledId && (
+                      <button
+                        onClick={() => onApplyScheduled(item.scheduledId!)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                      >
+                        <CheckCircle2 size={11} /> Apply
+                      </button>
+                    )}
                   </div>
                 </div>
-                <span className="text-white font-semibold text-sm">{formatCurrency(debt.minimumPayment)}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

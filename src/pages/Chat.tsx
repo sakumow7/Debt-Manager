@@ -1,3 +1,11 @@
+/**
+ * AI Financial Advisor chat page.
+ *
+ * Sends conversation history to Claude via the Electron IPC bridge with a
+ * dynamically built system prompt that includes the user's current debt and
+ * budget context. Requires the Electron desktop app and a configured Anthropic
+ * API key — gracefully degrades in browser-only mode.
+ */
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, RefreshCw, MessageCircle, AlertCircle } from 'lucide-react';
 import type { Debt, ChatMessage, MonthlyBudget } from '../types';
@@ -69,9 +77,10 @@ export default function Chat({ debts, budgets, messages, setMessages }: Props) {
 
   const currentBudget = budgets.find((b) => b.month === new Date().toISOString().slice(0, 7));
   const totalExpenses = currentBudget ? currentBudget.expenses.reduce((s, e) => s + e.amount, 0) : 0;
+  const extraIncome = currentBudget ? (currentBudget.extraIncomes ?? []).reduce((s, e) => s + e.amount, 0) : 0;
   const debtContext = generateDebtContext(
     debts,
-    currentBudget ? { income: currentBudget.income, totalExpenses } : undefined
+    currentBudget ? { income: currentBudget.income, extraIncome, totalExpenses } : undefined
   );
 
   const systemPrompt = `You are a compassionate, knowledgeable personal finance advisor specializing in debt elimination and financial freedom. You help people create personalized plans to eliminate debt, save money, and build wealth.
@@ -106,6 +115,8 @@ Guidelines:
     }
 
     try {
+      // Cap history at the 20 most recent messages to stay within Claude's context limit
+      // while still giving the model enough conversational context for follow-ups.
       const history = [...messages, userMessage].slice(-20).map((m) => ({ role: m.role, content: m.content }));
       const response = await window.electronAPI.chat(history, systemPrompt);
       const assistantMessage: ChatMessage = { id: generateId(), role: 'assistant', content: response, timestamp: new Date().toISOString() };

@@ -1,3 +1,17 @@
+/**
+ * Shared TypeScript types, interfaces, and constants for the Debt Manager application.
+ *
+ * Sections:
+ *   - Debt & payment models
+ *   - Budget models
+ *   - Payoff calculation result shapes
+ *   - AI chat and tips models
+ *   - App settings and Plaid integration
+ *   - Display constants (colors, labels, expense categories)
+ */
+
+// ─── Debt & Payment Models ────────────────────────────────────────────────────
+
 export type DebtType =
   | 'credit_card'
   | 'student_loan'
@@ -33,6 +47,8 @@ export interface Debt {
   plaidAccountId?: string; // linked Plaid account
 }
 
+// ─── Budget Models ────────────────────────────────────────────────────────────
+
 export interface ExpenseItem {
   id: string;
   category: string;
@@ -40,12 +56,22 @@ export interface ExpenseItem {
   type: 'fixed' | 'variable';
 }
 
+export interface ExtraIncome {
+  id: string;
+  category: string;
+  amount: number;
+  note?: string;
+}
+
 export interface MonthlyBudget {
   id: string;
   month: string; // YYYY-MM
   income: number;
   expenses: ExpenseItem[];
+  extraIncomes?: ExtraIncome[]; // optional — absent on records created before this feature
 }
+
+// ─── Payoff Calculation Shapes ────────────────────────────────────────────────
 
 export interface PaymentDetail {
   debtId: string;
@@ -81,6 +107,22 @@ export interface AttackPlanResult {
   monthlyPayment: number;
 }
 
+// ─── Scheduled Payments ───────────────────────────────────────────────────────
+
+/** A lump-sum payment the user intends to make against a specific debt on a future date. */
+export interface ScheduledPayment {
+  id: string;
+  debtId: string;
+  amount: number;
+  scheduledDate: string; // YYYY-MM-DD
+  note?: string;
+  status: 'pending' | 'applied';
+  createdAt: string;
+  sourceExtraIncomeId?: string; // set when created from an ExtraIncome item
+}
+
+// ─── AI Chat & Tips Models ────────────────────────────────────────────────────
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -96,6 +138,8 @@ export interface SavingsTip {
   category: 'housing' | 'food' | 'transportation' | 'entertainment' | 'utilities' | 'income' | 'debt' | 'other';
   actionSteps?: string[];
 }
+
+// ─── App Settings & Plaid Integration ────────────────────────────────────────
 
 export interface PlaidAccount {
   account_id: string;
@@ -119,6 +163,8 @@ export interface AppSettings {
   plaidAccounts: PlaidAccount[];
 }
 
+// ─── Display Constants ────────────────────────────────────────────────────────
+
 export const DEBT_COLORS: Record<DebtType, string> = {
   credit_card: '#ef4444',
   student_loan: '#3b82f6',
@@ -138,6 +184,17 @@ export const DEBT_TYPE_LABELS: Record<DebtType, string> = {
   medical: 'Medical Debt',
   other: 'Other',
 };
+
+export const EXTRA_INCOME_CATEGORIES = [
+  'Gift',
+  'Tax Refund',
+  'Work Bonus',
+  'Side Hustle',
+  'Freelance',
+  'Sold Items',
+  'Cashback / Rebate',
+  'Other',
+];
 
 export const EXPENSE_CATEGORIES = [
   'Housing/Rent',

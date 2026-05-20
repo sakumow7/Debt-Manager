@@ -1,3 +1,11 @@
+/**
+ * Settings page.
+ *
+ * Manages app preferences (strategy, currency, extra payment), Anthropic API key
+ * storage and validation, Plaid banking integration setup, and full data
+ * export/import/clear operations. API keys are written to the OS user-data
+ * directory via IPC — they are never transmitted outside the device.
+ */
 import { useState, useEffect } from 'react';
 import { Save, Eye, EyeOff, CheckCircle, XCircle, Link2, Trash2, RefreshCw, Download, Upload, AlertCircle, Building2 } from 'lucide-react';
 import type { AppSettings, Debt, MonthlyBudget } from '../types';
@@ -92,7 +100,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
       try {
         const accounts = await window.electronAPI.plaidGetAccounts(account.accessToken);
         // Update balances in debts that are linked
-        const matchedAccount = accounts.find((a: PlaidAccountRaw) => a.account_id === account.account_id);
+        const matchedAccount = accounts.find((a: { account_id: string; balances: { current: number | null } }) => a.account_id === account.account_id);
         if (matchedAccount) {
           const balance = Math.abs(matchedAccount.balances.current || 0);
           setDebts((prev) =>
@@ -385,7 +393,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
 
       {/* App Info */}
       <div className="text-center text-gray-700 text-xs pb-4">
-        Debt Manager v1.0.0 · Windows 11 Desktop App · Built with Electron + React
+        Chisel Finance v1.0.3 · Windows 11 Desktop App · Built with Electron + React
       </div>
     </div>
   );

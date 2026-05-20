@@ -1,3 +1,16 @@
+/**
+ * Electron main process — the privileged Node.js side of the desktop application.
+ *
+ * Responsibilities:
+ *   - Creates and manages the BrowserWindow
+ *   - Reads/writes the local config file (API keys, Plaid tokens) via `config:*` IPC handlers
+ *   - Proxies requests to the Anthropic Claude API via `ai:*` IPC handlers
+ *   - Proxies requests to the Plaid API via `plaid:*` IPC handlers
+ *
+ * All API calls are made from the main process (not the renderer) so that secret
+ * keys are never exposed to the browser context. The renderer communicates through
+ * the contextBridge defined in preload.ts.
+ */
 import { app, BrowserWindow, ipcMain, shell, protocol } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -32,6 +45,11 @@ function saveConfig(config: AppConfig): void {
   fs.writeFileSync(getConfigPath(), JSON.stringify(config, null, 2), 'utf8');
 }
 
+/**
+ * Low-level Anthropic API caller using Node's built-in `https` module.
+ * We avoid `fetch` here because the packaged Electron binary may run on a Node
+ * version where global `fetch` is not available, while `https` is always present.
+ */
 async function callAnthropic(apiKey: string, body: object): Promise<string> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -67,6 +85,10 @@ async function callAnthropic(apiKey: string, body: object): Promise<string> {
   });
 }
 
+/**
+ * Generic Plaid REST caller. Automatically selects the correct hostname based
+ * on the configured environment (sandbox / development / production).
+ */
 async function callPlaid(
   config: AppConfig,
   endpoint: string,
@@ -128,8 +150,10 @@ function createWindow(): void {
     backgroundColor: '#030712',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
+      contextIsolation: true,  // Isolates renderer from main-process globals
+      nodeIntegration: false,  // Prevents renderer from calling Node APIs directly
+      // sandbox: false is required so the preload script can access the ipcRenderer
+      // module. The renderer itself is still isolated via contextIsolation.
       sandbox: false,
     },
     titleBarStyle: 'default',
@@ -217,7 +241,7 @@ ipcMain.handle('plaid:create-link-token', async () => {
   }
   const result = await callPlaid(config, '/link/token/create', {
     user: { client_user_id: 'debt-manager-user' },
-    client_name: 'Debt Manager',
+    client_name: 'Chisel',
     products: ['liabilities', 'accounts'],
     country_codes: ['US'],
     language: 'en',

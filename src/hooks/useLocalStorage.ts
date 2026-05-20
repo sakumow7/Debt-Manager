@@ -1,3 +1,7 @@
+/**
+ * Generic hook for state that must survive page reloads.
+ * All application data (debts, budgets, settings, chat history) flows through here.
+ */
 import { useState, useCallback } from 'react';
 
 /**

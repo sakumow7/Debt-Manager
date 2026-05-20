@@ -1,3 +1,7 @@
+/**
+ * Shared utility helpers used across the application.
+ */
+
 /** Generates a collision-resistant unique ID using timestamp + random suffix. */
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;

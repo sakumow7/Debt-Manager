@@ -1,3 +1,10 @@
+/**
+ * Electron preload script — the security bridge between the renderer and the main process.
+ *
+ * `contextBridge.exposeInMainWorld` safely exposes a whitelist of IPC calls as
+ * `window.electronAPI`. The renderer can call these methods without ever having
+ * direct access to Node.js or Electron internals, satisfying contextIsolation.
+ */
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {

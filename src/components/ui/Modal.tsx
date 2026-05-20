@@ -1,3 +1,7 @@
+/**
+ * Accessible modal dialog with a backdrop, Escape-to-close, and three size variants.
+ * Used for add/edit debt forms, the log-payment dialog, and any other overlays.
+ */
 import { useEffect, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 

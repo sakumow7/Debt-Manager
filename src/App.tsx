@@ -1,3 +1,9 @@
+/**
+ * Root application component. Owns all top-level state (debts, budgets, settings,
+ * chat history) persisted via localStorage, and renders the router with the
+ * persistent sidebar layout.
+ */
+import { useState } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -7,8 +13,11 @@ import Budget from './pages/Budget';
 import Tips from './pages/Tips';
 import Chat from './pages/Chat';
 import Settings from './pages/Settings';
-import type { Debt, MonthlyBudget, AppSettings, ChatMessage } from './types';
+import Help from './pages/Help';
+import OnboardingTour from './components/ui/OnboardingTour';
+import type { Debt, MonthlyBudget, AppSettings, ChatMessage, ScheduledPayment } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { generateId } from './lib/utils';
 
 const DEFAULT_SETTINGS: AppSettings = {
   extraMonthlyPayment: 0,
@@ -22,8 +31,45 @@ export default function App() {
   const [budgets, setBudgets] = useLocalStorage<MonthlyBudget[]>('dm-budgets', []);
   const [settings, setSettings] = useLocalStorage<AppSettings>('dm-settings', DEFAULT_SETTINGS);
   const [chatMessages, setChatMessages] = useLocalStorage<ChatMessage[]>('dm-chat', []);
+  const [scheduledPayments, setScheduledPayments] = useLocalStorage<ScheduledPayment[]>('dm-scheduled', []);
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('dm-onboarding-complete'));
 
+  function completeOnboarding() {
+    localStorage.setItem('dm-onboarding-complete', '1');
+    setShowOnboarding(false);
+  }
+
+  function replayTutorial() {
+    localStorage.removeItem('dm-onboarding-complete');
+    setShowOnboarding(true);
+  }
+
+  // Spread DEFAULT_SETTINGS first so any new keys added in future releases are
+  // present even when the stored value predates them.
   const mergedSettings: AppSettings = { ...DEFAULT_SETTINGS, ...settings };
+
+  /** Applies a pending scheduled payment to its target debt and marks it applied. */
+  function applyScheduledPayment(id: string) {
+    const sp = scheduledPayments.find((p) => p.id === id);
+    if (!sp) return;
+    const now = new Date().toISOString();
+    setDebts((prev) =>
+      prev.map((d) =>
+        d.id === sp.debtId
+          ? {
+              ...d,
+              balance: Math.max(0, d.balance - sp.amount),
+              updatedAt: now,
+              payments: [
+                ...d.payments,
+                { id: generateId(), amount: sp.amount, date: now.slice(0, 10), note: sp.note || 'Scheduled payment', source: 'manual' as const },
+              ],
+            }
+          : d
+      )
+    );
+    setScheduledPayments((prev) => prev.filter((p) => p.id !== id));
+  }
 
   return (
     <Router>
@@ -31,10 +77,11 @@ export default function App() {
         <Sidebar />
         <main className="flex-1 overflow-y-auto min-w-0">
           <Routes>
-            <Route path="/" element={<Dashboard debts={debts} budgets={budgets} settings={mergedSettings} />} />
+            <Route path="/help" element={<Help onReplayTutorial={replayTutorial} />} />
+            <Route path="/" element={<Dashboard debts={debts} budgets={budgets} settings={mergedSettings} scheduledPayments={scheduledPayments} onApplyScheduled={applyScheduledPayment} />} />
             <Route path="/debts" element={<Debts debts={debts} setDebts={setDebts} settings={mergedSettings} />} />
-            <Route path="/attack-plan" element={<AttackPlan debts={debts} settings={mergedSettings} setSettings={setSettings} />} />
-            <Route path="/budget" element={<Budget budgets={budgets} setBudgets={setBudgets} settings={mergedSettings} setSettings={setSettings} />} />
+            <Route path="/attack-plan" element={<AttackPlan debts={debts} settings={mergedSettings} setSettings={setSettings} scheduledPayments={scheduledPayments} />} />
+            <Route path="/budget" element={<Budget budgets={budgets} setBudgets={setBudgets} settings={mergedSettings} setSettings={setSettings} debts={debts} scheduledPayments={scheduledPayments} setScheduledPayments={setScheduledPayments} />} />
             <Route path="/tips" element={<Tips debts={debts} budgets={budgets} />} />
             <Route path="/chat" element={<Chat debts={debts} budgets={budgets} messages={chatMessages} setMessages={setChatMessages} />} />
             <Route
@@ -53,6 +100,7 @@ export default function App() {
           </Routes>
         </main>
       </div>
+      {showOnboarding && <OnboardingTour onComplete={completeOnboarding} />}
     </Router>
   );
 }

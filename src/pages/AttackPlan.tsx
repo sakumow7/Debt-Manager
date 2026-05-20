@@ -1,16 +1,25 @@
+/**
+ * Debt Attack Plan page.
+ *
+ * Runs all three payoff strategies (Avalanche, Snowball, Minimum-only) in
+ * parallel and lets the user compare projected debt-free dates, total interest,
+ * and payoff order. The user's chosen strategy and extra monthly payment are
+ * persisted back to app settings.
+ */
 import { useMemo, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Target, TrendingDown, Check, Flame, Snowflake, Minus, ChevronRight } from 'lucide-react';
-import type { Debt, AppSettings } from '../types';
-import { calculatePayoffPlan, formatCurrency, formatDate, monthsToYearsMonths, getPayoffChartData } from '../lib/calculations';
+import { Target, TrendingDown, Check, Flame, Snowflake, Minus, ChevronRight, ChevronDown, ChevronUp, CalendarCheck } from 'lucide-react';
+import type { Debt, AppSettings, ScheduledPayment, MonthlyScheduleItem } from '../types';
+import { calculatePayoffPlan, formatCurrency, formatDate, monthsToYearsMonths, getPayoffChartData, scheduledToLumps } from '../lib/calculations';
 import type { AttackPlanResult } from '../types';
 
 interface Props {
   debts: Debt[];
   settings: AppSettings;
   setSettings: (s: AppSettings | ((p: AppSettings) => AppSettings)) => void;
+  scheduledPayments: ScheduledPayment[];
 }
 
 function PlanCard({
@@ -79,14 +88,144 @@ function PlanCard({
   );
 }
 
-export default function AttackPlan({ debts, settings, setSettings }: Props) {
+// ─── Per-debt monthly breakdown ───────────────────────────────────────────────
+
+function monthLabel(monthsFromNow: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + monthsFromNow);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+interface BreakdownRow {
+  month: number;
+  balance: number;
+  payment: number;
+  isLump: boolean;
+  paidOff: boolean;
+}
+
+function DebtBreakdownRow({
+  debt,
+  schedule,
+  lumps,
+}: {
+  debt: Debt;
+  schedule: MonthlyScheduleItem[];
+  lumps: { debtId: string; amount: number; month: number }[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  const lumpMonths = useMemo(
+    () => new Set(lumps.filter((l) => l.debtId === debt.id).map((l) => l.month)),
+    [lumps, debt.id]
+  );
+
+  const rows = useMemo<BreakdownRow[]>(() => {
+    const result: BreakdownRow[] = [
+      { month: 0, balance: debt.balance, payment: 0, isLump: false, paidOff: false },
+    ];
+    for (const item of schedule) {
+      const pmt = item.payments.find((p) => p.debtId === debt.id);
+      if (!pmt) continue;
+      const paidOff = pmt.balance < 0.01;
+      result.push({
+        month: item.month,
+        balance: pmt.balance,
+        payment: pmt.payment,
+        isLump: lumpMonths.has(item.month),
+        paidOff,
+      });
+      if (paidOff) break;
+    }
+    return result;
+  }, [debt.balance, debt.id, schedule, lumpMonths]);
+
+  const payoffRow = rows.find((r) => r.paidOff);
+
+  return (
+    <div className="rounded-xl border border-gray-800 overflow-hidden">
+      {/* Collapsed header row */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-800/40 hover:bg-gray-800/70 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: debt.color }} />
+          <span className="text-gray-200 text-sm font-medium truncate">{debt.name}</span>
+          <span className="text-gray-500 text-xs shrink-0">{formatCurrency(debt.balance)}</span>
+          {lumpMonths.size > 0 && (
+            <span className="flex items-center gap-1 text-xs text-blue-400 shrink-0">
+              <CalendarCheck size={11} /> {lumpMonths.size} lump sum{lumpMonths.size > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {payoffRow ? (
+            <span className="text-emerald-400 text-xs font-medium">{monthLabel(payoffRow.month)}</span>
+          ) : (
+            <span className="text-gray-600 text-xs">Not paid off in projection</span>
+          )}
+          {open ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
+        </div>
+      </button>
+
+      {/* Expanded month-by-month table */}
+      {open && (
+        <div className="max-h-64 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-gray-950 border-b border-gray-800 z-10">
+              <tr>
+                <th className="text-left px-4 py-2 text-gray-500 font-medium">Month</th>
+                <th className="text-left px-4 py-2 text-gray-500 font-medium">Date</th>
+                <th className="text-right px-4 py-2 text-gray-500 font-medium">Balance</th>
+                <th className="text-right px-4 py-2 text-gray-500 font-medium">Payment</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr
+                  key={row.month}
+                  className={`border-b border-gray-800/40 last:border-0 ${row.paidOff ? 'bg-emerald-500/5' : row.isLump ? 'bg-blue-500/5' : ''}`}
+                >
+                  <td className="px-4 py-2 text-gray-500">{row.month === 0 ? 'Now' : `M${row.month}`}</td>
+                  <td className="px-4 py-2 text-gray-400">{monthLabel(row.month)}</td>
+                  <td className="px-4 py-2 text-right font-semibold" style={{ color: debt.color }}>
+                    {formatCurrency(row.balance)}
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-300">
+                    {row.payment > 0 ? formatCurrency(row.payment) : '—'}
+                  </td>
+                  <td className="px-4 py-2 text-left">
+                    {row.isLump && !row.paidOff && (
+                      <span className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">lump sum</span>
+                    )}
+                    {row.paidOff && (
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">✓ paid off</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
+export default function AttackPlan({ debts, settings, setSettings, scheduledPayments }: Props) {
   const [extra, setExtra] = useState(String(settings.extraMonthlyPayment));
 
   const extraNum = parseFloat(extra) || 0;
+  const lumps = useMemo(() => scheduledToLumps(scheduledPayments), [scheduledPayments]);
 
-  const avalanche = useMemo(() => calculatePayoffPlan(debts, extraNum, 'avalanche'), [debts, extraNum]);
-  const snowball = useMemo(() => calculatePayoffPlan(debts, extraNum, 'snowball'), [debts, extraNum]);
-  const minimum = useMemo(() => calculatePayoffPlan(debts, 0, 'minimum'), [debts]);
+  const avalanche = useMemo(() => calculatePayoffPlan(debts, extraNum, 'avalanche', lumps), [debts, extraNum, lumps]);
+  const snowball = useMemo(() => calculatePayoffPlan(debts, extraNum, 'snowball', lumps), [debts, extraNum, lumps]);
+  // Minimum-only still reflects scheduled lumps so the comparison is fair
+  const minimum = useMemo(() => calculatePayoffPlan(debts, 0, 'minimum', lumps), [debts, lumps]);
 
   const chartData = useMemo(
     () =>
@@ -263,6 +402,35 @@ export default function AttackPlan({ debts, settings, setSettings }: Props) {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Monthly Balance Breakdown */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <h2 className="text-white font-semibold mb-1">Monthly Balance Breakdown</h2>
+        <p className="text-gray-500 text-xs mb-4">
+          Per-debt projection for the {selected === 'avalanche' ? 'Avalanche' : 'Snowball'} strategy — expand any debt to see its month-by-month balance
+        </p>
+        <div className="space-y-2">
+          {(() => {
+            // Order by payoff month (attack plan order); debts not in the plan go last
+            const payoffOrder = new Map(selectedPlan.debtPayoffInfo.map((info, i) => [info.debtId, i]));
+            return debts
+              .filter((d) => d.balance > 0)
+              .sort((a, b) => {
+                const ia = payoffOrder.get(a.id) ?? Infinity;
+                const ib = payoffOrder.get(b.id) ?? Infinity;
+                return ia - ib;
+              })
+              .map((debt) => (
+                <DebtBreakdownRow
+                  key={debt.id}
+                  debt={debt}
+                  schedule={selectedPlan.monthlySchedule}
+                  lumps={lumps}
+                />
+              ));
+          })()}
         </div>
       </div>
 

@@ -1,3 +1,10 @@
+/**
+ * Money Saving Tips page.
+ *
+ * Ships eight curated, categorized tips as a static baseline. When the user
+ * clicks "Generate AI Tips," the page sends their live debt and budget data to
+ * Claude and replaces the static list with personalized recommendations.
+ */
 import { useState } from 'react';
 import { Lightbulb, RefreshCw, Home, Utensils, Car, Tv, Zap, TrendingUp, DollarSign, HelpCircle, Star } from 'lucide-react';
 import type { Debt, MonthlyBudget } from '../types';
@@ -150,7 +157,8 @@ export default function Tips({ debts, budgets }: Props) {
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   const currentBudget = budgets.find((b) => b.month === new Date().toISOString().slice(0, 7));
   const totalExpenses = currentBudget ? currentBudget.expenses.reduce((s, e) => s + e.amount, 0) : 0;
-  const surplus = currentBudget ? currentBudget.income - totalExpenses : 0;
+  const extraIncome = currentBudget ? (currentBudget.extraIncomes ?? []).reduce((s, e) => s + e.amount, 0) : 0;
+  const surplus = currentBudget ? currentBudget.income + extraIncome - totalExpenses : 0;
 
   async function generateAITips() {
     if (!window.electronAPI) {

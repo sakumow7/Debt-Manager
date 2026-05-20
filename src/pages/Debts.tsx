@@ -1,3 +1,10 @@
+/**
+ * My Debts page — full CRUD interface for debt records.
+ *
+ * Displays all debts sorted by APR (highest first, mirroring the avalanche
+ * heuristic) with expandable payment history, inline progress bars, and modals
+ * for adding/editing debts and logging manual payments.
+ */
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw } from 'lucide-react';
 import Modal from '../components/ui/Modal';

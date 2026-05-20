@@ -1,7 +1,7 @@
 {
-  "name": "debt-manager",
-  "version": "1.0.0",
-  "description": "Interactive Debt Manager Desktop Application",
+  "name": "chisel",
+  "version": "1.0.3",
+  "description": "Chisel Finance — Cut through debt. A precision debt payoff desktop application.",
   "main": "electron-dist/electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on http://localhost:5173 && electron .\"",
@@ -34,9 +34,9 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.debtmanager.app",
-    "productName": "Debt Manager",
-    "copyright": "Copyright © 2024",
+    "appId": "com.chiselfinance.app",
+    "productName": "Chisel Finance",
+    "copyright": "Copyright © 2025",
     "directories": {
       "output": "release"
     },
@@ -50,14 +50,24 @@
       "main": "electron-dist/electron/main.js"
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
-      "icon": "build/icon.ico"
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "appx", "arch": ["x64"] }
+      ],
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "allowToChangeInstallationDirectory": true
+    },
+    "appx": {
+      "applicationId": "ChiselFinance",
+      "backgroundColor": "#111827",
+      "displayName": "Chisel Finance",
+      "identityName": "ChiselFinance",
+      "publisherDisplayName": "YOUR_DISPLAY_NAME",
+      "publisher": "CN=YOUR_CN_STRING"
     }
   }
 }
