@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw, BarChart2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw, BarChart2, Upload } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import CelebrationModal from '../components/ui/CelebrationModal';
+import CSVImportModal from '../components/ui/CSVImportModal';
 import type { Debt, DebtType, AppSettings } from '../types';
 import { DEBT_TYPE_LABELS, DEBT_COLORS } from '../types';
 import { formatCurrency, formatDate, getDebtProgress, getDaysUntilDue } from '../lib/calculations';
@@ -125,6 +126,7 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
 
 export default function Debts({ debts, setDebts, addToast }: Props) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showCSVImport, setShowCSVImport] = useState(false);
   const [editDebt, setEditDebt] = useState<Debt | null>(null);
   const [showPayment, setShowPayment] = useState<Debt | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -254,9 +256,14 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
             {debts.length} debts · {formatCurrency(totalDebt)} total · {formatCurrency(totalMin)}/mo minimum
           </p>
         </div>
-        <button onClick={openAdd} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-colors text-sm">
-          <Plus size={16} /> Add Debt
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowCSVImport(true)} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-colors text-sm">
+            <Upload size={16} /> Import CSV
+          </button>
+          <button onClick={openAdd} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-colors text-sm">
+            <Plus size={16} /> Add Debt
+          </button>
+        </div>
       </div>
 
       {debts.length === 0 ? (
@@ -467,6 +474,17 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
             </div>
           </div>
         </Modal>
+      )}
+
+      {showCSVImport && (
+        <CSVImportModal
+          onClose={() => setShowCSVImport(false)}
+          onImport={(imported) => {
+            setDebts(prev => [...prev, ...imported]);
+            setShowCSVImport(false);
+            addToast(`Imported ${imported.length} debt${imported.length !== 1 ? 's' : ''}`, 'success');
+          }}
+        />
       )}
 
       {celebration && (

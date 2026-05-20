@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Save, Eye, EyeOff, CheckCircle, XCircle, Link2, Trash2, RefreshCw, Download, Upload, AlertCircle, Building2, Sun, Moon, Bell, BellOff, CalendarDays } from 'lucide-react';
+import { usePlaidLink } from 'react-plaid-link';
 import type { AppSettings, Debt, MonthlyBudget } from '../types';
 import type { ToastType } from '../hooks/useToast';
 
@@ -56,6 +57,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
   const [saved, setSaved] = useState(false);
   const [plaidLinking, setPlaidLinking] = useState(false);
   const [plaidError, setPlaidError] = useState('');
+  const [plaidLinkToken, setPlaidLinkToken] = useState<string | null>(null);
 
   const isElectron = !!window.electronAPI;
 
@@ -95,6 +97,29 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     }
   }
 
+  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
+    if (!window.electronAPI) return;
+    try {
+      const accessToken = await window.electronAPI.plaidExchangeToken(publicToken);
+      const accounts = await window.electronAPI.plaidGetAccounts(accessToken);
+      const institution = metadata.institution?.name || 'Bank';
+      const newAccounts = accounts.map((a: any) => ({ ...a, institution, accessToken }));
+      setSettings(prev => ({ ...prev, plaidAccounts: [...(prev.plaidAccounts || []), ...newAccounts] }));
+      await window.electronAPI.setConfig({ plaidAccessTokens: [{ institution, token: accessToken, accountIds: accounts.map((a: any) => a.account_id) }] });
+      addToast(`Connected ${institution}`, 'success');
+      setPlaidLinkToken(null);
+    } catch (e: any) {
+      setPlaidError(e.message || 'Failed to link bank account');
+      addToast('Bank link failed', 'error');
+    }
+  }, [addToast, setSettings]);
+
+  const { open: openPlaidLink, ready: plaidReady } = usePlaidLink({
+    token: plaidLinkToken ?? '',
+    onSuccess: onPlaidSuccess,
+    onExit: () => { setPlaidLinking(false); setPlaidLinkToken(null); },
+  });
+
   async function connectBank() {
     if (!window.electronAPI) return;
     setPlaidLinking(true);
@@ -102,15 +127,20 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     try {
       await window.electronAPI.setConfig({ plaidClientId, plaidSecret, plaidEnv });
       const linkToken = await window.electronAPI.plaidCreateLinkToken();
-      console.log('Plaid Link Token:', linkToken);
-      setPlaidError(`Link token created: ${linkToken.slice(0, 20)}... Open Plaid Link with this token to connect your bank.`);
+      setPlaidLinkToken(linkToken);
     } catch (e: any) {
       setPlaidError(e.message || 'Failed to create Plaid link token');
       addToast('Bank connection failed', 'error');
-    } finally {
       setPlaidLinking(false);
     }
   }
+
+  useEffect(() => {
+    if (plaidLinkToken && plaidReady) {
+      openPlaidLink();
+      setPlaidLinking(false);
+    }
+  }, [plaidLinkToken, plaidReady, openPlaidLink]);
 
   async function syncBankAccounts() {
     if (!window.electronAPI || settings.plaidAccounts.length === 0) return;
