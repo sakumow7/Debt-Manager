@@ -1,7 +1,3 @@
-/**
- * Persistent left-hand navigation sidebar. Renders the Chisel brand mark, primary
- * nav links with active-state highlighting, and a version footer.
- */
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -12,6 +8,7 @@ import {
   MessageCircle,
   Settings,
   BookOpen,
+  TrendingUp,
 } from 'lucide-react';
 import { ChiselIcon } from '../ui/ChiselIcon';
 
@@ -20,6 +17,7 @@ const nav = [
   { path: '/debts', icon: CreditCard, label: 'My Debts' },
   { path: '/attack-plan', icon: Target, label: 'Attack Plan' },
   { path: '/budget', icon: PiggyBank, label: 'Budget' },
+  { path: '/net-worth', icon: TrendingUp, label: 'Net Worth' },
   { path: '/tips', icon: Lightbulb, label: 'Saving Tips' },
   { path: '/chat', icon: MessageCircle, label: 'AI Advisor' },
   { path: '/help', icon: BookOpen, label: 'Help' },
@@ -72,7 +70,7 @@ export default function Sidebar() {
           <ChiselIcon size={11} className="text-gray-600" accent="#6b7280" />
           <p className="text-gray-600 text-xs font-semibold tracking-wide">Chisel</p>
         </div>
-        <p className="text-gray-700 text-[10px] text-center">Chisel Finance · v1.0.3</p>
+        <p className="text-gray-700 text-[10px] text-center">Chisel Finance · v1.1.0</p>
       </div>
     </aside>
   );

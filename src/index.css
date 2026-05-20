@@ -42,3 +42,31 @@ select option {
   background-color: #1f2937;
   color: #f9fafb;
 }
+
+/* ─── Light theme overrides ──────────────────────────────────────────────── */
+.chisel-light {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+.chisel-light body { background-color: #f8fafc; color: #0f172a; }
+.chisel-light .bg-gray-950 { background-color: #f1f5f9 !important; }
+.chisel-light .bg-gray-900 { background-color: #ffffff !important; }
+.chisel-light .bg-gray-800 { background-color: #f1f5f9 !important; }
+.chisel-light .bg-gray-800\/40 { background-color: rgba(226,232,240,0.5) !important; }
+.chisel-light .bg-gray-800\/70 { background-color: rgba(226,232,240,0.9) !important; }
+.chisel-light .bg-gray-950\/50 { background-color: rgba(248,250,252,0.8) !important; }
+.chisel-light .border-gray-800 { border-color: #e2e8f0 !important; }
+.chisel-light .border-gray-800\/60 { border-color: #e2e8f0 !important; }
+.chisel-light .border-gray-700 { border-color: #cbd5e1 !important; }
+.chisel-light .text-white { color: #0f172a !important; }
+.chisel-light .text-gray-300 { color: #334155 !important; }
+.chisel-light .text-gray-400 { color: #64748b !important; }
+.chisel-light .text-gray-500 { color: #94a3b8 !important; }
+.chisel-light .text-gray-600 { color: #94a3b8 !important; }
+.chisel-light .text-gray-700 { color: #94a3b8 !important; }
+.chisel-light .hover\:text-white:hover { color: #0f172a !important; }
+.chisel-light .hover\:bg-gray-800:hover { background-color: #e2e8f0 !important; }
+.chisel-light .hover\:bg-gray-800\/70:hover { background-color: #e2e8f0 !important; }
+.chisel-light select option { background-color: #ffffff; color: #0f172a; }
+.chisel-light ::-webkit-scrollbar-thumb { background: #94a3b8; }
+.chisel-light ::-webkit-scrollbar-thumb:hover { background: #64748b; }

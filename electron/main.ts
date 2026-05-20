@@ -11,7 +11,7 @@
  * keys are never exposed to the browser context. The renderer communicates through
  * the contextBridge defined in preload.ts.
  */
-import { app, BrowserWindow, ipcMain, shell, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, protocol, Notification } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
@@ -287,4 +287,12 @@ ipcMain.handle('plaid:get-transactions', async (_, { accessToken, startDate, end
 ipcMain.handle('plaid:open-link', async () => {
   const linkToken = await ipcMain.emit('plaid:create-link-token', null);
   return linkToken;
+});
+
+// ─── IPC: Native Notifications ────────────────────────────────────────────────
+
+ipcMain.handle('notification:show', (_, { title, body }: { title: string; body: string }) => {
+  if (!Notification.isSupported()) return false;
+  new Notification({ title, body, silent: false }).show();
+  return true;
 });

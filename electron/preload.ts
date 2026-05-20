@@ -24,4 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   plaidGetLiabilities: (accessToken: string) => ipcRenderer.invoke('plaid:get-liabilities', accessToken),
   plaidGetTransactions: (accessToken: string, startDate: string, endDate: string) =>
     ipcRenderer.invoke('plaid:get-transactions', { accessToken, startDate, endDate }),
+
+  // Notifications
+  showNotification: (title: string, body: string) =>
+    ipcRenderer.invoke('notification:show', { title, body }),
 });

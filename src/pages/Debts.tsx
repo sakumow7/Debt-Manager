@@ -1,17 +1,12 @@
-/**
- * My Debts page — full CRUD interface for debt records.
- *
- * Displays all debts sorted by APR (highest first, mirroring the avalanche
- * heuristic) with expandable payment history, inline progress bars, and modals
- * for adding/editing debts and logging manual payments.
- */
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw, BarChart2 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
+import CelebrationModal from '../components/ui/CelebrationModal';
 import type { Debt, DebtType, AppSettings } from '../types';
 import { DEBT_TYPE_LABELS, DEBT_COLORS } from '../types';
 import { formatCurrency, formatDate, getDebtProgress, getDaysUntilDue } from '../lib/calculations';
 import { generateId } from '../lib/utils';
+import type { ToastType } from '../hooks/useToast';
 
 const DEBT_TYPES: DebtType[] = ['credit_card', 'student_loan', 'mortgage', 'auto', 'personal', 'medical', 'other'];
 
@@ -19,6 +14,7 @@ interface Props {
   debts: Debt[];
   setDebts: (debts: Debt[] | ((prev: Debt[]) => Debt[])) => void;
   settings: AppSettings;
+  addToast: (msg: string, type?: ToastType) => void;
 }
 
 const emptyForm = {
@@ -32,7 +28,102 @@ const emptyForm = {
   notes: '',
 };
 
-export default function Debts({ debts, setDebts }: Props) {
+interface CelebrationData {
+  debtName: string;
+  originalBalance: number;
+  totalPaid: number;
+}
+
+// ─── Credit Score Impact Estimator ────────────────────────────────────────────
+
+function CreditScorePanel({ debts }: { debts: Debt[] }) {
+  const cards = debts.filter((d) => d.type === 'credit_card');
+  if (cards.length === 0) return null;
+
+  const totalLimit = cards.reduce((s, d) => s + d.originalBalance, 0);
+  const totalBalance = cards.reduce((s, d) => s + d.balance, 0);
+  const utilization = totalLimit > 0 ? (totalBalance / totalLimit) * 100 : 0;
+
+  let impact = '';
+  let impactColor = '';
+  let scoreDelta = '';
+  if (utilization < 10) {
+    impact = 'Excellent';
+    impactColor = 'text-emerald-400';
+    scoreDelta = '+40–60 pts';
+  } else if (utilization < 30) {
+    impact = 'Good';
+    impactColor = 'text-blue-400';
+    scoreDelta = '+10–30 pts';
+  } else if (utilization < 50) {
+    impact = 'Fair';
+    impactColor = 'text-amber-400';
+    scoreDelta = '−10–20 pts';
+  } else if (utilization < 75) {
+    impact = 'Poor';
+    impactColor = 'text-orange-400';
+    scoreDelta = '−30–50 pts';
+  } else {
+    impact = 'Very Poor';
+    impactColor = 'text-red-400';
+    scoreDelta = '−80–120 pts';
+  }
+
+  const barWidth = Math.min(100, utilization);
+  const barColor = utilization < 10 ? '#10b981' : utilization < 30 ? '#3b82f6' : utilization < 50 ? '#f59e0b' : utilization < 75 ? '#f97316' : '#ef4444';
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <BarChart2 size={16} className="text-gray-400" />
+        <h2 className="text-white font-semibold">Credit Score Impact Estimator</h2>
+      </div>
+      <p className="text-gray-500 text-xs mb-4">
+        Credit utilization accounts for ~30% of your FICO score. Based on your {cards.length} credit card{cards.length > 1 ? 's' : ''}.
+      </p>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="bg-gray-800 rounded-xl p-3 text-center">
+          <p className="text-white font-bold">{utilization.toFixed(1)}%</p>
+          <p className="text-gray-500 text-xs mt-0.5">Utilization</p>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-3 text-center">
+          <p className={`font-bold ${impactColor}`}>{impact}</p>
+          <p className="text-gray-500 text-xs mt-0.5">Rating</p>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-3 text-center">
+          <p className={`font-bold text-sm ${impactColor}`}>{scoreDelta}</p>
+          <p className="text-gray-500 text-xs mt-0.5">Est. Score Impact</p>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>{formatCurrency(totalBalance)} used</span>
+          <span>{formatCurrency(totalLimit)} limit</span>
+        </div>
+        <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${barWidth}%`, background: barColor }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+          <span>0%</span>
+          <span className="text-emerald-600">10% ideal</span>
+          <span className="text-blue-600">30% ok</span>
+          <span className="text-red-600">75%+</span>
+          <span>100%</span>
+        </div>
+      </div>
+      <p className="text-gray-600 text-xs mt-3">
+        Tip: Keeping utilization under 10% can maximize your credit score improvement.
+      </p>
+    </div>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function Debts({ debts, setDebts, addToast }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [editDebt, setEditDebt] = useState<Debt | null>(null);
   const [showPayment, setShowPayment] = useState<Debt | null>(null);
@@ -41,6 +132,7 @@ export default function Debts({ debts, setDebts }: Props) {
   const [paymentNote, setPaymentNote] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [celebration, setCelebration] = useState<CelebrationData | null>(null);
 
   function openAdd() {
     setForm(emptyForm);
@@ -81,6 +173,7 @@ export default function Debts({ debts, setDebts }: Props) {
             : d
         )
       );
+      addToast(`${form.name} updated`, 'success');
     } else {
       const newDebt: Debt = {
         id: generateId(),
@@ -99,6 +192,7 @@ export default function Debts({ debts, setDebts }: Props) {
         payments: [],
       };
       setDebts((prev) => [...prev, newDebt]);
+      addToast(`${form.name} added`, 'success');
     }
     setShowAdd(false);
   }
@@ -109,26 +203,42 @@ export default function Debts({ debts, setDebts }: Props) {
     if (isNaN(amount) || amount <= 0) return;
 
     const now = new Date().toISOString();
+    const newBalance = Math.max(0, showPayment.balance - amount);
+    const isPaidOff = newBalance === 0;
+
     setDebts((prev) =>
       prev.map((d) =>
         d.id === showPayment.id
           ? {
               ...d,
-              balance: Math.max(0, d.balance - amount),
+              balance: newBalance,
               updatedAt: now,
-              payments: [...d.payments, { id: generateId(), amount, date: now.slice(0, 10), note: paymentNote || undefined, source: 'manual' }],
+              payments: [
+                ...d.payments,
+                { id: generateId(), amount, date: now.slice(0, 10), note: paymentNote || undefined, source: 'manual' },
+              ],
             }
           : d
       )
     );
+
+    if (isPaidOff) {
+      const totalPaid = showPayment.payments.reduce((s, p) => s + p.amount, 0) + amount;
+      setCelebration({ debtName: showPayment.name, originalBalance: showPayment.originalBalance, totalPaid });
+    } else {
+      addToast(`Payment of ${formatCurrency(amount)} logged for ${showPayment.name}`, 'success');
+    }
+
     setPaymentAmount('');
     setPaymentNote('');
     setShowPayment(null);
   }
 
   function handleDelete(id: string) {
+    const debt = debts.find((d) => d.id === id);
     setDebts((prev) => prev.filter((d) => d.id !== id));
     setDeleteConfirm(null);
+    if (debt) addToast(`${debt.name} deleted`, 'info');
   }
 
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
@@ -199,7 +309,10 @@ export default function Debts({ debts, setDebts }: Props) {
                           <span className="text-gray-500 text-xs">{formatCurrency(debt.originalBalance - debt.balance)} paid</span>
                         </div>
                         <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${progress}%`, background: `linear-gradient(to right, ${debt.color}aa, ${debt.color})` }} />
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${progress}%`, background: `linear-gradient(to right, ${debt.color}aa, ${debt.color})` }}
+                          />
                         </div>
                       </div>
 
@@ -270,6 +383,9 @@ export default function Debts({ debts, setDebts }: Props) {
           })}
         </div>
       )}
+
+      {/* Credit Score Impact Estimator */}
+      {debts.length > 0 && <CreditScorePanel debts={debts} />}
 
       {/* Add/Edit Modal */}
       {showAdd && (
@@ -351,6 +467,15 @@ export default function Debts({ debts, setDebts }: Props) {
             </div>
           </div>
         </Modal>
+      )}
+
+      {celebration && (
+        <CelebrationModal
+          debtName={celebration.debtName}
+          originalBalance={celebration.originalBalance}
+          totalPaid={celebration.totalPaid}
+          onClose={() => setCelebration(null)}
+        />
       )}
     </div>
   );

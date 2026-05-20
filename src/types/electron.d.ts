@@ -26,6 +26,9 @@ interface ElectronAPI {
     startDate: string,
     endDate: string
   ) => Promise<PlaidTransaction[]>;
+
+  // Notifications
+  showNotification?: (title: string, body: string) => Promise<boolean>;
 }
 
 interface PlaidAccountRaw {

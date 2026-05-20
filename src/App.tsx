@@ -1,9 +1,4 @@
-/**
- * Root application component. Owns all top-level state (debts, budgets, settings,
- * chat history) persisted via localStorage, and renders the router with the
- * persistent sidebar layout.
- */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -14,9 +9,12 @@ import Tips from './pages/Tips';
 import Chat from './pages/Chat';
 import Settings from './pages/Settings';
 import Help from './pages/Help';
+import NetWorth from './pages/NetWorth';
 import OnboardingTour from './components/ui/OnboardingTour';
-import type { Debt, MonthlyBudget, AppSettings, ChatMessage, ScheduledPayment } from './types';
+import ToastContainer from './components/ui/Toast';
+import type { Debt, MonthlyBudget, AppSettings, ChatMessage, ScheduledPayment, Asset } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useToast } from './hooks/useToast';
 import { generateId } from './lib/utils';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -24,6 +22,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   currency: 'USD',
   preferredStrategy: 'avalanche',
   plaidAccounts: [],
+  theme: 'dark',
+  biweeklyPayments: false,
+  notificationsEnabled: false,
 };
 
 export default function App() {
@@ -32,7 +33,25 @@ export default function App() {
   const [settings, setSettings] = useLocalStorage<AppSettings>('dm-settings', DEFAULT_SETTINGS);
   const [chatMessages, setChatMessages] = useLocalStorage<ChatMessage[]>('dm-chat', []);
   const [scheduledPayments, setScheduledPayments] = useLocalStorage<ScheduledPayment[]>('dm-scheduled', []);
+  const [assets, setAssets] = useLocalStorage<Asset[]>('dm-assets', []);
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('dm-onboarding-complete'));
+
+  const { toasts, addToast, removeToast } = useToast();
+
+  const mergedSettings: AppSettings = { ...DEFAULT_SETTINGS, ...settings };
+
+  // Apply theme class to <html> element
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    if (mergedSettings.theme === 'light') {
+      html.classList.add('chisel-light');
+      body.classList.add('chisel-light');
+    } else {
+      html.classList.remove('chisel-light');
+      body.classList.remove('chisel-light');
+    }
+  }, [mergedSettings.theme]);
 
   function completeOnboarding() {
     localStorage.setItem('dm-onboarding-complete', '1');
@@ -44,11 +63,6 @@ export default function App() {
     setShowOnboarding(true);
   }
 
-  // Spread DEFAULT_SETTINGS first so any new keys added in future releases are
-  // present even when the stored value predates them.
-  const mergedSettings: AppSettings = { ...DEFAULT_SETTINGS, ...settings };
-
-  /** Applies a pending scheduled payment to its target debt and marks it applied. */
   function applyScheduledPayment(id: string) {
     const sp = scheduledPayments.find((p) => p.id === id);
     if (!sp) return;
@@ -79,11 +93,12 @@ export default function App() {
           <Routes>
             <Route path="/help" element={<Help onReplayTutorial={replayTutorial} />} />
             <Route path="/" element={<Dashboard debts={debts} budgets={budgets} settings={mergedSettings} scheduledPayments={scheduledPayments} onApplyScheduled={applyScheduledPayment} />} />
-            <Route path="/debts" element={<Debts debts={debts} setDebts={setDebts} settings={mergedSettings} />} />
-            <Route path="/attack-plan" element={<AttackPlan debts={debts} settings={mergedSettings} setSettings={setSettings} scheduledPayments={scheduledPayments} />} />
+            <Route path="/debts" element={<Debts debts={debts} setDebts={setDebts} settings={mergedSettings} addToast={addToast} />} />
+            <Route path="/attack-plan" element={<AttackPlan debts={debts} settings={mergedSettings} setSettings={setSettings} scheduledPayments={scheduledPayments} addToast={addToast} />} />
             <Route path="/budget" element={<Budget budgets={budgets} setBudgets={setBudgets} settings={mergedSettings} setSettings={setSettings} debts={debts} scheduledPayments={scheduledPayments} setScheduledPayments={setScheduledPayments} />} />
             <Route path="/tips" element={<Tips debts={debts} budgets={budgets} />} />
             <Route path="/chat" element={<Chat debts={debts} budgets={budgets} messages={chatMessages} setMessages={setChatMessages} />} />
+            <Route path="/net-worth" element={<NetWorth assets={assets} setAssets={setAssets} debts={debts} addToast={addToast} />} />
             <Route
               path="/settings"
               element={
@@ -94,6 +109,7 @@ export default function App() {
                   setDebts={setDebts}
                   budgets={budgets}
                   setBudgets={setBudgets}
+                  addToast={addToast}
                 />
               }
             />
@@ -101,6 +117,7 @@ export default function App() {
         </main>
       </div>
       {showOnboarding && <OnboardingTour onComplete={completeOnboarding} />}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </Router>
   );
 }
