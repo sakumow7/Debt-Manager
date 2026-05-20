@@ -8,3 +8,14 @@ release/
 Thumbs.db
 assets/icons/*.png
 assets/icons/*.ico
+
+# Test artifacts
+scripts/test-driver.mjs
+scripts/test-theme.mjs
+scripts/test-ui.mjs
+test-screenshots/
+
+# Android build outputs
+android/app/build/
+android/.gradle/
+android/build/
