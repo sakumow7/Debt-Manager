@@ -1,14 +1,7 @@
-/**
- * Settings page.
- *
- * Manages app preferences (strategy, currency, extra payment), Anthropic API key
- * storage and validation, Plaid banking integration setup, and full data
- * export/import/clear operations. API keys are written to the OS user-data
- * directory via IPC — they are never transmitted outside the device.
- */
 import { useState, useEffect } from 'react';
-import { Save, Eye, EyeOff, CheckCircle, XCircle, Link2, Trash2, RefreshCw, Download, Upload, AlertCircle, Building2 } from 'lucide-react';
+import { Save, Eye, EyeOff, CheckCircle, XCircle, Link2, Trash2, RefreshCw, Download, Upload, AlertCircle, Building2, Sun, Moon, Bell, BellOff, CalendarDays } from 'lucide-react';
 import type { AppSettings, Debt, MonthlyBudget } from '../types';
+import type { ToastType } from '../hooks/useToast';
 
 interface Props {
   settings: AppSettings;
@@ -17,6 +10,7 @@ interface Props {
   setDebts: (d: Debt[] | ((p: Debt[]) => Debt[])) => void;
   budgets: MonthlyBudget[];
   setBudgets: (b: MonthlyBudget[] | ((p: MonthlyBudget[]) => MonthlyBudget[])) => void;
+  addToast: (msg: string, type?: ToastType) => void;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -28,7 +22,29 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export default function Settings({ settings, setSettings, debts, setDebts, budgets, setBudgets }: Props) {
+function ToggleRow({ icon: Icon, iconClass, label, description, value, onChange }: {
+  icon: React.ElementType; iconClass: string; label: string; description: string; value: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-gray-800 last:border-0">
+      <div className="flex items-center gap-3">
+        <Icon size={16} className={iconClass} />
+        <div>
+          <p className="text-gray-200 text-sm font-medium">{label}</p>
+          <p className="text-gray-500 text-xs">{description}</p>
+        </div>
+      </div>
+      <button
+        onClick={() => onChange(!value)}
+        className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${value ? 'bg-emerald-500' : 'bg-gray-600'}`}
+      >
+        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${value ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      </button>
+    </div>
+  );
+}
+
+export default function Settings({ settings, setSettings, debts, setDebts, budgets, setBudgets, addToast }: Props) {
   const [anthropicKey, setAnthropicKey] = useState('');
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [plaidClientId, setPlaidClientId] = useState('');
@@ -40,6 +56,8 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
   const [saved, setSaved] = useState(false);
   const [plaidLinking, setPlaidLinking] = useState(false);
   const [plaidError, setPlaidError] = useState('');
+
+  const isElectron = !!window.electronAPI;
 
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -57,6 +75,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     await window.electronAPI.setConfig({ anthropicKey, plaidClientId, plaidSecret, plaidEnv });
     setSaving(false);
     setSaved(true);
+    addToast('API keys saved', 'success');
     setTimeout(() => setSaved(false), 3000);
   }
 
@@ -67,11 +86,12 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     try {
       await window.electronAPI.setConfig({ anthropicKey });
       const result = await window.electronAPI.chat([{ role: 'user', content: 'Say "API key works!" in exactly 3 words.' }], 'You are a helpful assistant.');
-      if (result) setTestStatus('ok');
+      if (result) { setTestStatus('ok'); addToast('API key is working', 'success'); }
       else setTestStatus('error');
     } catch (e: any) {
       setTestStatus('error');
       setTestError(e.message || 'Connection failed');
+      addToast('API key test failed', 'error');
     }
   }
 
@@ -82,12 +102,11 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     try {
       await window.electronAPI.setConfig({ plaidClientId, plaidSecret, plaidEnv });
       const linkToken = await window.electronAPI.plaidCreateLinkToken();
-      // In production, open Plaid Link UI here
-      // For now, show instructions
       console.log('Plaid Link Token:', linkToken);
       setPlaidError(`Link token created: ${linkToken.slice(0, 20)}... Open Plaid Link with this token to connect your bank.`);
     } catch (e: any) {
       setPlaidError(e.message || 'Failed to create Plaid link token');
+      addToast('Bank connection failed', 'error');
     } finally {
       setPlaidLinking(false);
     }
@@ -95,19 +114,15 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
 
   async function syncBankAccounts() {
     if (!window.electronAPI || settings.plaidAccounts.length === 0) return;
-    // Sync balances for all linked accounts
     for (const account of settings.plaidAccounts) {
       try {
         const accounts = await window.electronAPI.plaidGetAccounts(account.accessToken);
-        // Update balances in debts that are linked
         const matchedAccount = accounts.find((a: { account_id: string; balances: { current: number | null } }) => a.account_id === account.account_id);
         if (matchedAccount) {
           const balance = Math.abs(matchedAccount.balances.current || 0);
           setDebts((prev) =>
             prev.map((d) =>
-              d.plaidAccountId === account.account_id
-                ? { ...d, balance, updatedAt: new Date().toISOString() }
-                : d
+              d.plaidAccountId === account.account_id ? { ...d, balance, updatedAt: new Date().toISOString() } : d
             )
           );
         }
@@ -115,6 +130,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
         console.error('Sync error:', e);
       }
     }
+    addToast('Bank accounts synced', 'success');
   }
 
   function exportData() {
@@ -123,9 +139,10 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `debt-manager-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `chisel-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    addToast('Backup exported', 'success');
   }
 
   function importData(e: React.ChangeEvent<HTMLInputElement>) {
@@ -138,9 +155,9 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
         if (data.debts) setDebts(data.debts);
         if (data.budgets) setBudgets(data.budgets);
         if (data.settings) setSettings(data.settings);
-        alert('Data imported successfully!');
+        addToast('Data imported successfully', 'success');
       } catch {
-        alert('Invalid backup file.');
+        addToast('Invalid backup file', 'error');
       }
     };
     reader.readAsText(file);
@@ -151,17 +168,18 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     if (!confirm('Are you sure you want to delete ALL your data? This cannot be undone.')) return;
     setDebts([]);
     setBudgets([]);
-    setSettings({ extraMonthlyPayment: 0, currency: 'USD', preferredStrategy: 'avalanche', plaidAccounts: [] });
+    setSettings({ extraMonthlyPayment: 0, currency: 'USD', preferredStrategy: 'avalanche', plaidAccounts: [], theme: 'dark' });
     localStorage.clear();
+    addToast('All data cleared', 'info');
   }
 
-  const isElectron = !!window.electronAPI;
+  const isDark = settings.theme !== 'light';
 
   return (
     <div className="p-6 space-y-6 animate-fade-in max-w-3xl">
       <div>
         <h1 className="text-white text-2xl font-bold">Settings</h1>
-        <p className="text-gray-400 text-sm mt-0.5">Configure your API keys and preferences</p>
+        <p className="text-gray-400 text-sm mt-0.5">Configure your preferences and API keys</p>
       </div>
 
       {!isElectron && (
@@ -171,7 +189,43 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
         </div>
       )}
 
-      {/* App Settings */}
+      {/* Appearance & Behavior */}
+      <Section title="Appearance & Behavior">
+        <ToggleRow
+          icon={isDark ? Moon : Sun}
+          iconClass={isDark ? 'text-blue-400' : 'text-amber-400'}
+          label="Light Mode"
+          description={isDark ? 'Switch to light theme' : 'Currently using light theme'}
+          value={!isDark}
+          onChange={(v) => setSettings((p) => ({ ...p, theme: v ? 'light' : 'dark' }))}
+        />
+        <ToggleRow
+          icon={CalendarDays}
+          iconClass="text-blue-400"
+          label="Biweekly Payments"
+          description="Pay every 2 weeks instead of monthly — adds 1 extra full payment per year"
+          value={settings.biweeklyPayments ?? false}
+          onChange={(v) => setSettings((p) => ({ ...p, biweeklyPayments: v }))}
+        />
+        {isElectron && (
+          <ToggleRow
+            icon={settings.notificationsEnabled ? Bell : BellOff}
+            iconClass={settings.notificationsEnabled ? 'text-emerald-400' : 'text-gray-500'}
+            label="Desktop Notifications"
+            description="Receive Windows notifications for upcoming payment due dates"
+            value={settings.notificationsEnabled ?? false}
+            onChange={(v) => {
+              setSettings((p) => ({ ...p, notificationsEnabled: v }));
+              if (v && window.electronAPI) {
+                window.electronAPI.showNotification?.('Chisel', 'Desktop notifications are now enabled!');
+              }
+              addToast(v ? 'Notifications enabled' : 'Notifications disabled', 'info');
+            }}
+          />
+        )}
+      </Section>
+
+      {/* App Preferences */}
       <Section title="App Preferences">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -259,7 +313,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
       <Section title="🏦 Plaid Banking Integration">
         <div className="space-y-4">
           <p className="text-gray-500 text-xs leading-relaxed">
-            Connect your bank accounts to automatically sync debt balances and track payments. Requires a free Plaid developer account at{' '}
+            Connect your bank accounts to automatically sync debt balances. Requires a free Plaid developer account at{' '}
             <span className="text-emerald-400">dashboard.plaid.com</span>.
           </p>
 
@@ -273,37 +327,21 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
               <li>Copy your Client ID and Sandbox Secret from API keys page</li>
               <li>Enter them below and click Save API Keys</li>
               <li>Click "Connect Bank" to link your accounts</li>
-              <li>Link your credit cards, loans, and other debt accounts</li>
             </ol>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-gray-400 text-xs block mb-1.5">Plaid Client ID</label>
-              <input
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono"
-                placeholder="Client ID"
-                value={plaidClientId}
-                onChange={(e) => setPlaidClientId(e.target.value)}
-              />
+              <input className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono" placeholder="Client ID" value={plaidClientId} onChange={(e) => setPlaidClientId(e.target.value)} />
             </div>
             <div>
               <label className="text-gray-400 text-xs block mb-1.5">Secret Key</label>
-              <input
-                type="password"
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono"
-                placeholder="Secret"
-                value={plaidSecret}
-                onChange={(e) => setPlaidSecret(e.target.value)}
-              />
+              <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono" placeholder="Secret" value={plaidSecret} onChange={(e) => setPlaidSecret(e.target.value)} />
             </div>
             <div>
               <label className="text-gray-400 text-xs block mb-1.5">Environment</label>
-              <select
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
-                value={plaidEnv}
-                onChange={(e) => setPlaidEnv(e.target.value)}
-              >
+              <select className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" value={plaidEnv} onChange={(e) => setPlaidEnv(e.target.value)}>
                 <option value="sandbox">Sandbox (testing)</option>
                 <option value="development">Development (real accounts)</option>
                 <option value="production">Production</option>
@@ -328,10 +366,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={syncBankAccounts} className="text-xs text-emerald-400 hover:text-emerald-300">Sync</button>
-                    <button
-                      onClick={() => setSettings((p) => ({ ...p, plaidAccounts: p.plaidAccounts.filter((_, j) => j !== i) }))}
-                      className="text-gray-500 hover:text-red-400"
-                    >
+                    <button onClick={() => setSettings((p) => ({ ...p, plaidAccounts: p.plaidAccounts.filter((_, j) => j !== i) }))} className="text-gray-500 hover:text-red-400">
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -349,10 +384,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
               <Link2 size={14} /> {plaidLinking ? 'Connecting...' : 'Connect Bank'}
             </button>
             {settings.plaidAccounts.length > 0 && (
-              <button
-                onClick={syncBankAccounts}
-                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-              >
+              <button onClick={syncBankAccounts} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
                 <RefreshCw size={14} /> Sync All
               </button>
             )}
@@ -391,9 +423,8 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
         </div>
       </Section>
 
-      {/* App Info */}
       <div className="text-center text-gray-700 text-xs pb-4">
-        Chisel Finance v1.0.3 · Windows 11 Desktop App · Built with Electron + React
+        Chisel Finance v1.1.0 · Windows 11 Desktop App · Built with Electron + React
       </div>
     </div>
   );

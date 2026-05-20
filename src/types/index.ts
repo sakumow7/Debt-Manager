@@ -139,6 +139,38 @@ export interface SavingsTip {
   actionSteps?: string[];
 }
 
+// ─── Assets & Net Worth ───────────────────────────────────────────────────────
+
+export type AssetType = 'checking' | 'savings' | 'investment' | 'property' | 'vehicle' | 'other';
+
+export interface Asset {
+  id: string;
+  name: string;
+  type: AssetType;
+  value: number;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
+  checking: 'Checking Account',
+  savings: 'Savings Account',
+  investment: 'Investment / 401(k)',
+  property: 'Real Estate',
+  vehicle: 'Vehicle',
+  other: 'Other',
+};
+
+export const ASSET_COLORS: Record<AssetType, string> = {
+  checking: '#10b981',
+  savings: '#3b82f6',
+  investment: '#8b5cf6',
+  property: '#f59e0b',
+  vehicle: '#ec4899',
+  other: '#6b7280',
+};
+
 // ─── App Settings & Plaid Integration ────────────────────────────────────────
 
 export interface PlaidAccount {
@@ -161,6 +193,9 @@ export interface AppSettings {
   currency: string;
   preferredStrategy: 'avalanche' | 'snowball';
   plaidAccounts: PlaidAccount[];
+  theme?: 'dark' | 'light';
+  biweeklyPayments?: boolean;
+  notificationsEnabled?: boolean;
 }
 
 // ─── Display Constants ────────────────────────────────────────────────────────
