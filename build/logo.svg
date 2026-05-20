@@ -1,0 +1,35 @@
+<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="blade" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="300" height="300" rx="62" ry="62" fill="url(#bg)"/>
+
+  <!-- Subtle inner highlight on top edge -->
+  <rect width="300" height="150" rx="62" ry="62" fill="white" fill-opacity="0.06"/>
+
+  <!-- Chisel icon: scale=8, centered (translateX=54, translateY=52) -->
+  <g transform="translate(54, 52) scale(8)">
+
+    <!-- Handle: rounded top, ergonomic grip -->
+    <rect x="8" y="1" width="8" height="9" rx="2.2" fill="white"/>
+
+    <!-- Ferrule: metal collar between handle and blade -->
+    <rect x="7" y="10" width="10" height="2.5" rx="1" fill="white" fill-opacity="0.82"/>
+
+    <!-- Blade: tapers toward cutting edge -->
+    <path d="M7 12.5 L17 12.5 L14.5 20.5 L9.5 20.5 Z" fill="url(#blade)"/>
+
+    <!-- Cutting edge tip: amber accent -->
+    <path d="M9.5 20.5 L14.5 20.5 L12 23.5 Z" fill="#fbbf24"/>
+
+  </g>
+</svg>

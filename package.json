@@ -14,6 +14,7 @@
     "@anthropic-ai/sdk": "^0.39.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^20.11.5",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
@@ -51,9 +52,24 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] },
-        { "target": "appx", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "appx",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "signAndEditExecutable": false
     },
