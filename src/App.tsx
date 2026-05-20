@@ -16,6 +16,7 @@ import type { Debt, MonthlyBudget, AppSettings, ChatMessage, ScheduledPayment, A
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useToast } from './hooks/useToast';
 import { generateId } from './lib/utils';
+import { checkPaymentReminders } from './lib/reminders';
 
 const DEFAULT_SETTINGS: AppSettings = {
   extraMonthlyPayment: 0,
@@ -39,6 +40,12 @@ export default function App() {
   const { toasts, addToast, removeToast } = useToast();
 
   const mergedSettings: AppSettings = { ...DEFAULT_SETTINGS, ...settings };
+
+  // Check payment reminders once on startup
+  useEffect(() => {
+    checkPaymentReminders(debts, mergedSettings);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Apply theme class to <html> element
   useEffect(() => {

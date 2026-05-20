@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Target, TrendingDown, Check, Flame, Snowflake, Minus, ChevronRight, ChevronDown, ChevronUp, CalendarCheck, ArrowLeftRight, CalendarDays } from 'lucide-react';
+import { Target, TrendingDown, Check, Flame, Snowflake, Minus, ChevronRight, ChevronDown, ChevronUp, CalendarCheck, ArrowLeftRight, CalendarDays, FileDown } from 'lucide-react';
+import { exportPayoffPlanPDF } from '../lib/pdfExport';
 import type { Debt, AppSettings, ScheduledPayment, MonthlyScheduleItem } from '../types';
 import { calculatePayoffPlan, formatCurrency, formatDate, monthsToYearsMonths, getPayoffChartData, scheduledToLumps } from '../lib/calculations';
 import type { AttackPlanResult } from '../types';
@@ -345,9 +346,19 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-white text-2xl font-bold">Debt Attack Plan</h1>
-        <p className="text-gray-400 text-sm mt-0.5">Compare strategies and accelerate your debt payoff</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-white text-2xl font-bold">Debt Attack Plan</h1>
+          <p className="text-gray-400 text-sm mt-0.5">Compare strategies and accelerate your debt payoff</p>
+        </div>
+        {selectedPlan && (
+          <button
+            onClick={() => exportPayoffPlanPDF(debts, selectedPlan, settings)}
+            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors shrink-0"
+          >
+            <FileDown size={15} /> Export PDF
+          </button>
+        )}
       </div>
 
       {/* Extra Payment + Biweekly */}

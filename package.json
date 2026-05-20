@@ -1,6 +1,6 @@
 {
   "name": "chisel",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Chisel Finance — Cut through debt. A precision debt payoff desktop application.",
   "main": "electron-dist/electron/main.js",
   "scripts": {
@@ -11,7 +11,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0"
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@types/papaparse": "^5.5.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "papaparse": "^5.5.3",
+    "react-plaid-link": "^4.1.1"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
