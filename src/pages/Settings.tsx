@@ -454,7 +454,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
       </Section>
 
       <div className="text-center text-gray-700 text-xs pb-4">
-        Chisel Finance v1.1.0 · Windows 11 Desktop App · Built with Electron + React
+        Chisel Finance v1.2.0 · Windows 11 Desktop App · Built with Electron + React
       </div>
     </div>
   );

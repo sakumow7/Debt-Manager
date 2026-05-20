@@ -1,6 +1,6 @@
 {
   "name": "chisel",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Chisel Finance — Cut through debt. A precision debt payoff desktop application.",
   "main": "electron-dist/electron/main.js",
   "scripts": {
