@@ -10,6 +10,31 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
+  /* Android safe area support */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Mobile: hide desktop sidebar, show bottom nav */
+@media (max-width: 767px) {
+  .desktop-sidebar {
+    display: none !important;
+  }
+  .mobile-bottom-nav {
+    display: flex !important;
+  }
+  .main-content {
+    padding-bottom: 5rem; /* clear bottom nav */
+  }
+}
+
+/* Desktop: hide bottom nav */
+@media (min-width: 768px) {
+  .mobile-bottom-nav {
+    display: none !important;
+  }
 }
 
 body {

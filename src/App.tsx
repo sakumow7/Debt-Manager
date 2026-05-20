@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
+import BottomNav from './components/layout/BottomNav';
 import Dashboard from './pages/Dashboard';
 import Debts from './pages/Debts';
 import AttackPlan from './pages/AttackPlan';
@@ -88,8 +89,8 @@ export default function App() {
   return (
     <Router>
       <div className="flex h-screen bg-gray-950 text-white overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto min-w-0">
+        <div className="desktop-sidebar"><Sidebar /></div>
+        <main className="main-content flex-1 overflow-y-auto min-w-0">
           <Routes>
             <Route path="/help" element={<Help onReplayTutorial={replayTutorial} />} />
             <Route path="/" element={<Dashboard debts={debts} budgets={budgets} settings={mergedSettings} scheduledPayments={scheduledPayments} onApplyScheduled={applyScheduledPayment} />} />
@@ -116,6 +117,7 @@ export default function App() {
           </Routes>
         </main>
       </div>
+      <BottomNav />
       {showOnboarding && <OnboardingTour onComplete={completeOnboarding} />}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </Router>
