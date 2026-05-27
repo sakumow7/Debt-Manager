@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw, BarChart2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw, BarChart2, Scale } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import CelebrationModal from '../components/ui/CelebrationModal';
 import type { Debt, DebtType, AppSettings } from '../types';
@@ -32,6 +32,97 @@ interface CelebrationData {
   debtName: string;
   originalBalance: number;
   totalPaid: number;
+}
+
+// ─── Update Balance Modal ─────────────────────────────────────────────────────
+
+function UpdateBalanceModal({ debt, onClose, onUpdate }: {
+  debt: Debt;
+  onClose: () => void;
+  onUpdate: (debtId: string, newBalance: number, note: string) => void;
+}) {
+  const [newBalance, setNewBalance] = useState('');
+  const [note, setNote] = useState('');
+
+  const parsed = parseFloat(newBalance);
+  const isValid = !isNaN(parsed) && parsed >= 0;
+  const diff = isValid ? debt.balance - parsed : null;
+  const isDecrease = diff !== null && diff > 0;
+  const isIncrease = diff !== null && diff < 0;
+  const noChange = diff === 0;
+
+  return (
+    <Modal title={`Update Balance — ${debt.name}`} onClose={onClose} size="sm">
+      <div className="space-y-4">
+        <div className="bg-gray-800 rounded-xl p-4">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Current Balance</span>
+            <span className="text-white font-semibold">{formatCurrency(debt.balance)}</span>
+          </div>
+          <div className="flex justify-between text-sm mt-1">
+            <span className="text-gray-400">Original Balance</span>
+            <span className="text-gray-500">{formatCurrency(debt.originalBalance)}</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-gray-400 text-xs block mb-1.5">New Balance ($) *</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+            placeholder="Enter exact current balance"
+            value={newBalance}
+            onChange={(e) => setNewBalance(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        {isValid && !noChange && (
+          <div className={`rounded-xl px-4 py-3 text-sm ${isDecrease ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
+            {isDecrease && (
+              <p className="text-emerald-300">
+                <span className="font-semibold">{formatCurrency(diff!)}</span> will be recorded as a payment in your history.
+              </p>
+            )}
+            {isIncrease && (
+              <p className="text-amber-300">
+                Balance will increase by <span className="font-semibold">{formatCurrency(Math.abs(diff!))}</span> (e.g. new charges or fees). No payment recorded.
+              </p>
+            )}
+          </div>
+        )}
+
+        {noChange && (
+          <p className="text-gray-500 text-xs text-center">Balance is already {formatCurrency(debt.balance)}</p>
+        )}
+
+        <div>
+          <label className="text-gray-400 text-xs block mb-1.5">Note (optional)</label>
+          <input
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+            placeholder={isDecrease ? 'e.g. Statement payment' : 'e.g. New charges added'}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => onUpdate(debt.id, parsed, note)}
+            disabled={!isValid || noChange}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
+          >
+            Update Balance
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 // ─── Credit Score Impact Estimator ────────────────────────────────────────────
@@ -127,6 +218,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [editDebt, setEditDebt] = useState<Debt | null>(null);
   const [showPayment, setShowPayment] = useState<Debt | null>(null);
+  const [updateBalanceDebt, setUpdateBalanceDebt] = useState<Debt | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
@@ -234,6 +326,34 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
     setShowPayment(null);
   }
 
+  function handleUpdateBalance(debtId: string, newBalance: number, note: string) {
+    const debt = debts.find((d) => d.id === debtId);
+    if (!debt) return;
+    const now = new Date().toISOString();
+    const diff = debt.balance - newBalance;
+    const isDecrease = diff > 0;
+
+    setDebts((prev) =>
+      prev.map((d) => {
+        if (d.id !== debtId) return d;
+        const updatedPayments = isDecrease
+          ? [...d.payments, { id: generateId(), amount: diff, date: now.slice(0, 10), note: note || 'Balance update', source: 'manual' as const }]
+          : d.payments;
+        return { ...d, balance: newBalance, updatedAt: now, payments: updatedPayments };
+      })
+    );
+
+    if (newBalance === 0) {
+      const totalPaid = (debt.payments.reduce((s, p) => s + p.amount, 0)) + (isDecrease ? diff : 0);
+      setCelebration({ debtName: debt.name, originalBalance: debt.originalBalance, totalPaid });
+    } else if (isDecrease) {
+      addToast(`${debt.name} updated to ${formatCurrency(newBalance)}`, 'success');
+    } else {
+      addToast(`${debt.name} balance adjusted to ${formatCurrency(newBalance)}`, 'info');
+    }
+    setUpdateBalanceDebt(null);
+  }
+
   function handleDelete(id: string) {
     const debt = debts.find((d) => d.id === id);
     setDebts((prev) => prev.filter((d) => d.id !== id));
@@ -326,6 +446,9 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => { setShowPayment(debt); setPaymentAmount(''); setPaymentNote(''); }} className="p-2 text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors" title="Log payment">
                         <DollarSign size={16} />
+                      </button>
+                      <button onClick={() => setUpdateBalanceDebt(debt)} className="p-2 text-gray-400 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors" title="Update balance">
+                        <Scale size={16} />
                       </button>
                       <button onClick={() => openEdit(debt)} className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors">
                         <Pencil size={16} />
@@ -467,6 +590,14 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
             </div>
           </div>
         </Modal>
+      )}
+
+      {updateBalanceDebt && (
+        <UpdateBalanceModal
+          debt={updateBalanceDebt}
+          onClose={() => setUpdateBalanceDebt(null)}
+          onUpdate={handleUpdateBalance}
+        />
       )}
 
       {celebration && (
