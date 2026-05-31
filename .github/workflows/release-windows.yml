@@ -1,0 +1,66 @@
+name: Release Windows Build
+
+# Builds the Windows installer (NSIS) and portable executable and attaches them
+# to a GitHub Release.
+#
+# Triggers:
+#   - workflow_dispatch: run manually and point it at any existing tag (defaults
+#     to the latest release tag). Use this to attach binaries to a release that
+#     already exists.
+#   - push of a version tag (v*.*.*): builds and attaches automatically when you
+#     cut a new tagged release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and attach artifacts to (e.g. v1.2.1)"
+        required: true
+        default: "v1.2.1"
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write # required to upload assets to the release
+
+jobs:
+  build-and-attach:
+    name: Build & attach Windows binaries
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout the target ref
+        uses: actions/checkout@v4
+        with:
+          # On manual runs, build the exact code at the chosen tag so the
+          # artifacts match that release's version. On tag pushes, github.ref
+          # already points at the tag.
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + Electron main
+        run: npm run build
+
+      - name: Package Windows installer + portable
+        # Only nsis + portable here: the appx (Microsoft Store) target needs a
+        # real publisher identity/signing and would otherwise fail the build.
+        run: npx electron-builder --win nsis portable --publish never
+
+      - name: Attach binaries to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            release/*.exe
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
