@@ -22,7 +22,9 @@ import {
   getDebtProgress,
   getDaysUntilDue,
   scheduledToLumps,
+  effectiveExtraPayment,
 } from '../lib/calculations';
+import { ordinal } from '../lib/utils';
 
 interface Props {
   debts: Debt[];
@@ -64,7 +66,12 @@ export default function Dashboard({ debts, budgets, settings, scheduledPayments,
   const avgRate = debts.length ? debts.reduce((s, d) => s + d.interestRate, 0) / debts.length : 0;
 
   const bestPlan = useMemo(
-    () => calculatePayoffPlan(debts, settings.extraMonthlyPayment, settings.preferredStrategy, scheduledToLumps(scheduledPayments)),
+    () => calculatePayoffPlan(
+      debts,
+      effectiveExtraPayment(debts, settings.extraMonthlyPayment, settings.biweeklyPayments ?? false),
+      settings.preferredStrategy,
+      scheduledToLumps(scheduledPayments)
+    ),
     [debts, settings, scheduledPayments]
   );
 
@@ -93,7 +100,7 @@ export default function Dashboard({ debts, budgets, settings, scheduledPayments,
     kind: 'due' as const,
     key: d.id,
     label: d.name,
-    sub: `Due on ${d.dueDate}${['st', 'nd', 'rd'][d.dueDate - 1] ?? 'th'}`,
+    sub: `Due on ${d.dueDate}${ordinal(d.dueDate)}`,
     amount: d.minimumPayment,
     color: d.color,
     daysUntil: getDaysUntilDue(d.dueDate),

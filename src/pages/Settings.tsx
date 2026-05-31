@@ -196,11 +196,11 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
 
   function clearAllData() {
     if (!confirm('Are you sure you want to delete ALL your data? This cannot be undone.')) return;
-    setDebts([]);
-    setBudgets([]);
-    setSettings({ extraMonthlyPayment: 0, currency: 'USD', preferredStrategy: 'avalanche', plaidAccounts: [], theme: 'dark' });
+    // Wipe every persisted key (debts, budgets, settings, chat, scheduled payments,
+    // assets, onboarding flag) and reload so all in-memory state re-initializes from
+    // empty storage — avoids stale data lingering in components we don't own here.
     localStorage.clear();
-    addToast('All data cleared', 'info');
+    window.location.reload();
   }
 
   const isDark = settings.theme !== 'light';
@@ -454,7 +454,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
       </Section>
 
       <div className="text-center text-gray-700 text-xs pb-4">
-        Chisel Finance v1.2.0 · Windows 11 Desktop App · Built with Electron + React
+        Chisel Finance v1.2.1 · Windows 11 Desktop App · Built with Electron + React
       </div>
     </div>
   );
