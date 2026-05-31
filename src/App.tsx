@@ -16,6 +16,7 @@ import type { Debt, MonthlyBudget, AppSettings, ChatMessage, ScheduledPayment, A
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useToast } from './hooks/useToast';
 import { generateId } from './lib/utils';
+import { getDaysUntilDue, formatCurrency } from './lib/calculations';
 
 const DEFAULT_SETTINGS: AppSettings = {
   extraMonthlyPayment: 0,
@@ -52,6 +53,39 @@ export default function App() {
       body.classList.remove('chisel-light');
     }
   }, [mergedSettings.theme]);
+
+  // Due-date reminders: when enabled (desktop only), fire a single native
+  // notification on launch for debts due within 3 days and scheduled lump sums
+  // that are ready to apply. Throttled to once per calendar day.
+  useEffect(() => {
+    if (!mergedSettings.notificationsEnabled) return;
+    const api = window.electronAPI;
+    if (!api?.showNotification) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem('dm-last-due-notify') === today) return;
+
+    const dueSoon = debts.filter((d) => d.balance > 0 && getDaysUntilDue(d.dueDate) <= 3);
+    const readyScheduled = scheduledPayments.filter(
+      (p) => p.status === 'pending' && new Date(p.scheduledDate + 'T00:00:00').getTime() <= Date.now()
+    );
+
+    if (dueSoon.length === 0 && readyScheduled.length === 0) return;
+
+    const parts: string[] = [];
+    if (dueSoon.length > 0) {
+      const total = dueSoon.reduce((s, d) => s + d.minimumPayment, 0);
+      parts.push(`${dueSoon.length} payment${dueSoon.length > 1 ? 's' : ''} due soon (${formatCurrency(total)} min)`);
+    }
+    if (readyScheduled.length > 0) {
+      parts.push(`${readyScheduled.length} scheduled payment${readyScheduled.length > 1 ? 's' : ''} ready to apply`);
+    }
+
+    api.showNotification('Chisel — Upcoming Payments', parts.join(' · '));
+    localStorage.setItem('dm-last-due-notify', today);
+    // Run once on mount; deliberately not re-firing as data changes mid-session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function completeOnboarding() {
     localStorage.setItem('dm-onboarding-complete', '1');

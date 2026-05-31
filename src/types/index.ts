@@ -39,6 +39,7 @@ export interface Debt {
   interestRate: number; // APR as a percentage, e.g. 24.99
   minimumPayment: number;
   dueDate: number; // day of month 1–31
+  creditLimit?: number; // credit-card credit limit, used for utilization / credit-score estimate
   notes?: string;
   color: string;
   createdAt: string;

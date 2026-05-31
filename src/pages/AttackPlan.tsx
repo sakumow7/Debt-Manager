@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import { Target, TrendingDown, Check, Flame, Snowflake, Minus, ChevronRight, ChevronDown, ChevronUp, CalendarCheck, ArrowLeftRight, CalendarDays } from 'lucide-react';
 import type { Debt, AppSettings, ScheduledPayment, MonthlyScheduleItem } from '../types';
-import { calculatePayoffPlan, formatCurrency, formatDate, monthsToYearsMonths, getPayoffChartData, scheduledToLumps } from '../lib/calculations';
+import { calculatePayoffPlan, formatCurrency, formatDate, monthsToYearsMonths, getPayoffChartData, scheduledToLumps, effectiveExtraPayment } from '../lib/calculations';
 import type { AttackPlanResult } from '../types';
 import type { ToastType } from '../hooks/useToast';
 
@@ -307,10 +307,9 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
   const biweekly = settings.biweeklyPayments ?? false;
 
   // Biweekly adds 1 extra payment per year (26 half-payments = 13 full vs 12).
-  // Extra per month = totalMinimums / 12 (plus extraNum already applied separately)
-  const totalMinimums = debts.filter((d) => d.balance > 0).reduce((s, d) => s + d.minimumPayment, 0);
-  const biweeklyBonus = biweekly ? (totalMinimums + extraNum) / 12 : 0;
-  const effectiveExtra = extraNum + biweeklyBonus;
+  // Shared helper keeps this projection in sync with the Dashboard.
+  const effectiveExtra = effectiveExtraPayment(debts, extraNum, biweekly);
+  const biweeklyBonus = effectiveExtra - extraNum;
 
   const avalanche = useMemo(() => calculatePayoffPlan(debts, effectiveExtra, 'avalanche', lumps), [debts, effectiveExtra, lumps]);
   const snowball = useMemo(() => calculatePayoffPlan(debts, effectiveExtra, 'snowball', lumps), [debts, effectiveExtra, lumps]);

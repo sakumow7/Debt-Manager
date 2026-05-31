@@ -11,7 +11,7 @@ import {
   BookOpen, ChevronDown, ChevronUp, LayoutDashboard, CreditCard,
   Target, PiggyBank, Lightbulb, MessageCircle, Settings,
   Flame, Snowflake, Minus, CheckCircle2, CalendarCheck,
-  PlayCircle, HelpCircle, GraduationCap,
+  PlayCircle, HelpCircle, GraduationCap, TrendingUp,
 } from 'lucide-react';
 
 interface Props {
@@ -118,6 +118,19 @@ const FEATURES = [
       'Schedule any extra income as a future lump-sum debt payment',
       'Surplus banner with one-click "Apply to Plan" (uses 70% of surplus)',
       'Budget Health bars — Expenses vs Surplus visualized',
+    ],
+  },
+  {
+    icon: TrendingUp,
+    color: 'text-emerald-400',
+    title: 'Net Worth',
+    summary: 'Your complete financial picture — assets minus debts.',
+    bullets: [
+      'Add assets: checking, savings, investments, property, vehicles',
+      'Liabilities are pulled automatically from your tracked debts',
+      'Net worth = total assets − total debts, updated live',
+      'Asset allocation pie chart and assets-vs-liabilities overview',
+      'Edit or remove any asset at any time',
     ],
   },
   {
@@ -391,7 +404,7 @@ export default function Help({ onReplayTutorial }: Props) {
 
       {/* Footer */}
       <div className="text-center text-gray-700 text-xs pb-2">
-        Chisel Finance v1.0.3 · All data stored locally · <span className="text-gray-600">Never sent to any server</span>
+        Chisel Finance v1.1.0 · All data stored locally · <span className="text-gray-600">Never sent to any server</span>
       </div>
     </div>
   );
