@@ -7,6 +7,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.2.1] — 2026-05-31
+
+Patch release. Bug-fix and correctness pass over the v1.2.0 codebase — found via
+a full audit and runtime testing of the financial engine (20/20 assertions). No
+feature changes; all v1.2.0 features (CSV import, PDF export, payment reminders,
+Plaid sync) are retained.
+
+### Fixed
+
+- **Credit Score Estimator used the wrong denominator.** Utilization was computed
+  from each card's *original balance* instead of its credit limit, so the
+  estimate was meaningless. Added an optional **Credit Limit** field to credit
+  cards; the estimator now uses real limits, excludes cards without one, and
+  prompts you to add a limit instead of showing a fabricated number.
+- **Dashboard debt-free date ignored Biweekly mode**, disagreeing with the Attack
+  Plan. Centralized the biweekly math in a shared `effectiveExtraPayment()` helper
+  so every screen projects the same payoff date.
+- **"Clear All Data" left chat, scheduled payments, and assets on screen** until a
+  manual restart (and raced with `localStorage.clear()`). It now performs a clean
+  full reset.
+- **Payoff comparison chart** started all strategy lines from a slightly inflated,
+  duplicated value. The month-0 anchor is now computed exactly per strategy.
+- **Wrong ordinal suffixes for due dates 21–31** ("21th"/"22th"/"31th"). Added an
+  `ordinal()` helper used on the Dashboard and My Debts pages.
+- **Stale version strings** across the Sidebar, Settings, and Help footers — now
+  consistently show the current version.
+
 ## [1.0.0] — 2024-01-01
 
 ### Added

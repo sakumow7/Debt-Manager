@@ -70,7 +70,7 @@ export default function Sidebar() {
           <ChiselIcon size={11} className="text-gray-600" accent="#6b7280" />
           <p className="text-gray-600 text-xs font-semibold tracking-wide">Chisel</p>
         </div>
-        <p className="text-gray-700 text-[10px] text-center">Chisel Finance · v1.1.0</p>
+        <p className="text-gray-700 text-[10px] text-center">Chisel Finance · v1.2.1</p>
       </div>
     </aside>
   );

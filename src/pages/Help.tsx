@@ -391,7 +391,7 @@ export default function Help({ onReplayTutorial }: Props) {
 
       {/* Footer */}
       <div className="text-center text-gray-700 text-xs pb-2">
-        Chisel Finance v1.0.3 · All data stored locally · <span className="text-gray-600">Never sent to any server</span>
+        Chisel Finance v1.2.1 · All data stored locally · <span className="text-gray-600">Never sent to any server</span>
       </div>
     </div>
   );

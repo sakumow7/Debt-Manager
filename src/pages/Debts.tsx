@@ -6,7 +6,7 @@ import CSVImportModal from '../components/ui/CSVImportModal';
 import type { Debt, DebtType, AppSettings } from '../types';
 import { DEBT_TYPE_LABELS, DEBT_COLORS } from '../types';
 import { formatCurrency, formatDate, getDebtProgress, getDaysUntilDue } from '../lib/calculations';
-import { generateId } from '../lib/utils';
+import { generateId, ordinal } from '../lib/utils';
 import type { ToastType } from '../hooks/useToast';
 
 const DEBT_TYPES: DebtType[] = ['credit_card', 'student_loan', 'mortgage', 'auto', 'personal', 'medical', 'other'];
@@ -25,6 +25,7 @@ const emptyForm = {
   balance: '',
   interestRate: '',
   minimumPayment: '',
+  creditLimit: '',
   dueDate: '15',
   notes: '',
 };
@@ -41,9 +42,30 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
   const cards = debts.filter((d) => d.type === 'credit_card');
   if (cards.length === 0) return null;
 
-  const totalLimit = cards.reduce((s, d) => s + d.originalBalance, 0);
-  const totalBalance = cards.reduce((s, d) => s + d.balance, 0);
+  // Utilization is only meaningful against real credit limits. Use only cards
+  // that have a creditLimit set; never fabricate a limit from the balance.
+  const cardsWithLimit = cards.filter((d) => (d.creditLimit ?? 0) > 0);
+
+  if (cardsWithLimit.length === 0) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <BarChart2 size={16} className="text-gray-400" />
+          <h2 className="text-white font-semibold">Credit Score Impact Estimator</h2>
+        </div>
+        <p className="text-gray-500 text-xs leading-relaxed">
+          Add a <strong className="text-gray-300">Credit Limit</strong> to your credit cards
+          (via the edit button) to estimate your credit utilization and its impact on your score.
+          Utilization is roughly 30% of a FICO score.
+        </p>
+      </div>
+    );
+  }
+
+  const totalLimit = cardsWithLimit.reduce((s, d) => s + (d.creditLimit ?? 0), 0);
+  const totalBalance = cardsWithLimit.reduce((s, d) => s + d.balance, 0);
   const utilization = totalLimit > 0 ? (totalBalance / totalLimit) * 100 : 0;
+  const cardsMissingLimit = cards.length - cardsWithLimit.length;
 
   let impact = '';
   let impactColor = '';
@@ -80,7 +102,8 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
         <h2 className="text-white font-semibold">Credit Score Impact Estimator</h2>
       </div>
       <p className="text-gray-500 text-xs mb-4">
-        Credit utilization accounts for ~30% of your FICO score. Based on your {cards.length} credit card{cards.length > 1 ? 's' : ''}.
+        Credit utilization accounts for ~30% of your FICO score. Based on {cardsWithLimit.length} credit card{cardsWithLimit.length > 1 ? 's' : ''} with a limit set
+        {cardsMissingLimit > 0 && <span className="text-amber-400/80"> ({cardsMissingLimit} card{cardsMissingLimit > 1 ? 's' : ''} missing a limit — add one to include {cardsMissingLimit > 1 ? 'them' : 'it'})</span>}.
       </p>
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-gray-800 rounded-xl p-3 text-center">
@@ -150,6 +173,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
       balance: String(debt.balance),
       interestRate: String(debt.interestRate),
       minimumPayment: String(debt.minimumPayment),
+      creditLimit: debt.creditLimit != null ? String(debt.creditLimit) : '',
       dueDate: String(debt.dueDate),
       notes: debt.notes || '',
     });
@@ -162,6 +186,9 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
     const interestRate = parseFloat(form.interestRate);
     const minimumPayment = parseFloat(form.minimumPayment);
     const dueDate = parseInt(form.dueDate);
+    const parsedLimit = parseFloat(form.creditLimit);
+    // Credit limit only applies to credit cards; undefined when blank or N/A.
+    const creditLimit = form.type === 'credit_card' && !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
     if (!form.name || isNaN(balance) || isNaN(interestRate) || isNaN(minimumPayment)) return;
 
@@ -171,7 +198,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
       setDebts((prev) =>
         prev.map((d) =>
           d.id === editDebt.id
-            ? { ...d, name: form.name, creditor: form.creditor, type: form.type, balance, interestRate, minimumPayment, dueDate, notes: form.notes, updatedAt: now }
+            ? { ...d, name: form.name, creditor: form.creditor, type: form.type, balance, interestRate, minimumPayment, creditLimit, dueDate, notes: form.notes, updatedAt: now }
             : d
         )
       );
@@ -186,6 +213,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
         originalBalance: balance,
         interestRate,
         minimumPayment,
+        creditLimit,
         dueDate,
         notes: form.notes,
         color: DEBT_COLORS[form.type],
@@ -326,7 +354,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
                       <div className="flex items-center gap-6 mt-3 text-xs text-gray-500">
                         <span><span className="text-white font-medium">{debt.interestRate}%</span> APR</span>
                         <span><span className="text-white font-medium">{formatCurrency(debt.minimumPayment)}</span>/mo min</span>
-                        <span>Due <span className="text-white font-medium">{debt.dueDate}{['st', 'nd', 'rd'][debt.dueDate - 1] || 'th'}</span></span>
+                        <span>Due <span className="text-white font-medium">{debt.dueDate}{ordinal(debt.dueDate)}</span></span>
                       </div>
                     </div>
 
@@ -429,6 +457,12 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
                 <label className="text-gray-400 text-xs block mb-1.5">Due Date (day of month)</label>
                 <input type="number" min="1" max="31" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="15" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
               </div>
+              {form.type === 'credit_card' && (
+                <div className="col-span-2">
+                  <label className="text-gray-400 text-xs block mb-1.5">Credit Limit ($) <span className="text-gray-600">— optional, enables credit utilization estimate</span></label>
+                  <input type="number" min="0" step="0.01" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. 10000" value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} />
+                </div>
+              )}
               <div className="col-span-2">
                 <label className="text-gray-400 text-xs block mb-1.5">Notes (optional)</label>
                 <textarea rows={2} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none" placeholder="Any notes about this debt..." value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />

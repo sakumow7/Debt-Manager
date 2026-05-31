@@ -56,6 +56,23 @@ function emptyResult(strategy: AttackPlanResult['strategy']): AttackPlanResult {
   };
 }
 
+/**
+ * Computes the effective extra monthly payment, folding in biweekly cadence when
+ * enabled. Paying every 2 weeks yields 26 half-payments = 13 full payments/year
+ * instead of 12, i.e. one extra monthly payment spread across the year. That bonus
+ * equals (sum of minimums + extra) / 12 added on top of the regular extra.
+ * Centralized so the Dashboard projection and Attack Plan always agree.
+ */
+export function effectiveExtraPayment(
+  debts: Debt[],
+  extraMonthly: number,
+  biweekly: boolean
+): number {
+  if (!biweekly) return extraMonthly;
+  const totalMinimums = debts.filter((d) => d.balance > 0).reduce((s, d) => s + d.minimumPayment, 0);
+  return extraMonthly + (totalMinimums + extraMonthly) / 12;
+}
+
 export function calculatePayoffPlan(
   debts: Debt[],
   extraMonthly: number,
@@ -193,7 +210,22 @@ export function getPayoffChartData(
   const step = Math.max(1, Math.floor(maxMonths / samplePoints));
   const dataMap = new Map<number, { month: number; [key: string]: number }>();
 
-  dataMap.set(0, { month: 0, ...Object.fromEntries(plans.map((p) => [p.label, p.result.monthlySchedule[0] ? plans[0].result.monthlySchedule[0].totalBalance + plans[0].result.monthlyPayment : 0])) });
+  // Month-0 anchor: the true starting balance for each plan, derived exactly from
+  // its own first simulated month (pre-payment balance = post-month balance +
+  // payment made − interest accrued). All plans share the same debts so these
+  // values match, but computing per-plan keeps each line self-consistent.
+  dataMap.set(0, {
+    month: 0,
+    ...Object.fromEntries(
+      plans.map((p) => {
+        const first = p.result.monthlySchedule[0];
+        const start = first
+          ? Math.round(first.totalBalance + first.totalPayment - first.totalInterest)
+          : 0;
+        return [p.label, start];
+      })
+    ),
+  });
 
   for (const plan of plans) {
     const schedule = plan.result.monthlySchedule;
