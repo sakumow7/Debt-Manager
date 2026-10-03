@@ -1,3 +1,4 @@
+import { currencySymbol } from '../lib/calculations';
 /**
  * Monthly Budget page.
  *
@@ -13,6 +14,8 @@ import { EXPENSE_CATEGORIES, EXTRA_INCOME_CATEGORIES } from '../types';
 import { formatCurrency, formatDate } from '../lib/calculations';
 import { generateId, currentMonth } from '../lib/utils';
 import Modal from '../components/ui/Modal';
+import { updateData } from '../lib/dataStore';
+import { budgetSurplus } from '../lib/budgetCalculations';
 
 interface Props {
   budgets: MonthlyBudget[];
@@ -72,7 +75,7 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
   function handleSchedulePayment() {
     if (!scheduleSource || !schedDebtId || !schedDate) return;
     const amount = parseFloat(schedAmount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1e9) return;
     const sp: ScheduledPayment = {
       id: generateId(),
       debtId: schedDebtId,
@@ -100,7 +103,7 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
 
   function setIncome(val: string) {
     const inc = parseFloat(val);
-    if (isNaN(inc)) return;
+    if (!Number.isFinite(inc) || inc < 0 || inc > 1e9) return;
     setBudgets((prev) => {
       const existing = prev.find((b) => b.month === viewMonth);
       if (existing) return prev.map((b) => b.month === viewMonth ? { ...b, income: inc } : b);
@@ -111,7 +114,7 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
 
   function addExpense() {
     const amount = parseFloat(newAmount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1e9) return;
     const expense: ExpenseItem = { id: generateId(), category: newCategory, amount, type: newType };
     setBudgets((prev) => {
       const existing = prev.find((b) => b.month === viewMonth);
@@ -127,7 +130,7 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
 
   function addExtraIncome() {
     const amount = parseFloat(newExtraAmount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1e9) return;
     const extra: ExtraIncome = { id: generateId(), category: newExtraCategory, amount, note: newExtraNote || undefined };
     setBudgets((prev) => {
       const existing = prev.find((b) => b.month === viewMonth);
@@ -141,23 +144,17 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
   function removeExtraIncome(id: string) {
     // Find the item before removing it so we can match orphaned scheduled payments.
     const extra = (budget?.extraIncomes ?? []).find((e) => e.id === id);
-    setBudgets((prev) => prev.map((b) => b.month === viewMonth ? { ...b, extraIncomes: (b.extraIncomes ?? []).filter((e) => e.id !== id) } : b));
-    setScheduledPayments((prev) =>
-      prev.filter((sp) => {
-        // Primary match: ID link set when the payment was scheduled (post-fix).
-        if (sp.sourceExtraIncomeId === id) return false;
-        // Fallback: match by note+amount for payments created before the ID link existed.
-        if (!sp.sourceExtraIncomeId && extra && sp.amount === extra.amount && sp.note === (extra.note || extra.category)) return false;
-        return true;
-      })
-    );
+    updateData(prev => ({ ...prev,
+      budgets: prev.budgets.map(b => b.month === viewMonth ? { ...b, extraIncomes: (b.extraIncomes ?? []).filter(e => e.id !== id) } : b),
+      scheduledPayments: prev.scheduledPayments.filter(sp => sp.sourceExtraIncomeId !== id && !(!sp.sourceExtraIncomeId && extra && sp.amount === extra.amount && sp.note === (extra.note || extra.category))),
+    }));
   }
 
   const extraIncomes = budget?.extraIncomes ?? [];
   const totalExtraIncome = extraIncomes.reduce((s, e) => s + e.amount, 0);
   const totalExpenses = budget ? budget.expenses.reduce((s, e) => s + e.amount, 0) : 0;
   const income = budget?.income || 0;
-  const surplus = income + totalExtraIncome - totalExpenses;
+  const { total: surplus, recurring: recurringSurplus, unlistedMinimums } = budgetSurplus(budget, debts);
   const fixedTotal = budget ? budget.expenses.filter((e) => e.type === 'fixed').reduce((s, e) => s + e.amount, 0) : 0;
   const variableTotal = totalExpenses - fixedTotal;
 
@@ -218,22 +215,24 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
         </div>
       </div>
 
-      {surplus > 0 && (
+      {recurringSurplus > 0 && (
         <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp size={16} className="text-emerald-400" />
             <p className="text-emerald-300 text-sm">
-            You have <strong>{formatCurrency(surplus)}</strong> surplus this month{totalExtraIncome > 0 && <> (includes <strong>{formatCurrency(totalExtraIncome)}</strong> extra income)</>}. Apply <strong>{formatCurrency(Math.round(surplus * 0.7))}</strong> (70%) to debt for optimal progress.
+            Your recurring surplus is <strong>{formatCurrency(recurringSurplus)}</strong>, excluding one-time income and reserving minimum debt payments. Apply <strong>{formatCurrency(Math.round(recurringSurplus * 0.7))}</strong> (70%) as recurring extra payments.
           </p>
           </div>
           <button
-            onClick={() => setSettings((p) => ({ ...p, extraMonthlyPayment: Math.round(surplus * 0.7) }))}
+            onClick={() => setSettings((p) => ({ ...p, extraMonthlyPayment: Math.min(1e9, Math.round(recurringSurplus * 0.7)) }))}
             className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0 ml-3"
           >
             Apply to Plan
           </button>
         </div>
       )}
+
+      <p className="text-gray-400 text-xs">Surplus reserves {formatCurrency(unlistedMinimums)} in minimum debt payments not listed under Debt Payments. One-time income can fund scheduled lump sums; it is excluded from recurring extra payments.</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Expense List */}
@@ -245,7 +244,7 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
             </h2>
             <div className="flex gap-3">
               <div className="relative flex-1">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">{currencySymbol()}</span>
                 <input
                   type="number"
                   min="0"
@@ -278,7 +277,7 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
                 {EXTRA_INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">{currencySymbol()}</span>
                 <input
                   type="number"
                   min="0"
@@ -374,7 +373,7 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
                 <option value="variable">Variable</option>
               </select>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">{currencySymbol()}</span>
                 <input
                   type="number"
                   min="0"
@@ -508,9 +507,9 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
           </div>
 
           <div>
-            <label className="text-gray-400 text-xs block mb-1.5">Payment Amount ($) *</label>
+            <label className="text-gray-400 text-xs block mb-1.5">Payment Amount ({currencySymbol()}) *</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{currencySymbol()}</span>
               <input
                 type="number"
                 min="0"
@@ -551,3 +550,4 @@ export default function Budget({ budgets, setBudgets, settings, setSettings, deb
     </>
   );
 }
+

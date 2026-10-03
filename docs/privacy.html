@@ -204,16 +204,13 @@
   </div>
 
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: May 19, 2025</p>
+  <p class="updated">Last updated: October 3, 2026 (unreleased update)</p>
 
   <!-- TL;DR -->
   <div class="summary-box">
     <p>
       <strong>Short version:</strong> Chisel Finance stores all your financial data
-      <strong>locally on your device only</strong>. We do not collect, transmit, or
-      store any personal or financial information on any server. We have no account
-      system and no analytics. Your data never leaves your computer unless you
-      explicitly export it yourself.
+      <strong>locally on your device only</strong>. Core financial records stay on your device. We have no account system or analytics. If you enable and use AI, selected financial figures and messages are sent to Anthropic. The optional banking integration contacts Plaid. Exported backups also contain sensitive financial records.
     </p>
   </div>
 
@@ -240,17 +237,17 @@
   <p>
     All data you enter into Chisel Finance — debts, balances, budgets, payment history,
     and settings — is stored exclusively in your device's local storage
-    (<span class="highlight">localStorage</span> within the Electron application sandbox).
+    (<span class="highlight">localStorage</span> as a validated application snapshot). Financial records and exported JSON backups are not encrypted by Chisel; protect your device and files.
     This data:
   </p>
   <ul>
     <li>Never leaves your device automatically</li>
     <li>Is not synced to any cloud service by the application</li>
-    <li>Is not accessible to the developer or any third party</li>
+    <li>Is not uploaded to the developer; optional integrations process the information described below</li>
     <li>Remains entirely under your control at all times</li>
   </ul>
   <p>
-    You can export your data as a JSON backup file at any time via
+    Backups include financial records, assets, planned payments, settings and chat history. Credentials and bank connections are excluded. Keep backups private and reconnect banks after restoring. You can export a JSON backup via
     <strong>Settings → Export Backup</strong>, and delete all data via
     <strong>Settings → Clear All Data</strong>.
   </p>
@@ -272,14 +269,14 @@
     <tr>
       <td><span class="tag">Optional</span><br>Anthropic Claude API</td>
       <td>AI Advisor chat and personalized tips</td>
-      <td>Your debt summary and budget totals are sent to Anthropic's API when you use AI features. No names or account numbers are included.</td>
+      <td>Your debt summary and budget totals are sent to Anthropic's API when you use AI features. Debt names and creditors are replaced with numbered labels. Your free-text messages may contain personal information, so review them before sending. Explicit AI consent is required; provider usage charges may apply.</td>
       <td>You — using your own API key. Governed by <a href="https://www.anthropic.com/privacy" target="_blank">Anthropic's Privacy Policy</a>.</td>
     </tr>
     <tr>
       <td><span class="tag amber">Optional</span><br>Plaid Banking</td>
       <td>Automatic balance sync from your bank accounts</td>
       <td>Account balance data is fetched directly from Plaid using your own credentials. No transaction history is stored by the app.</td>
-      <td>You — using your own Plaid developer credentials. Governed by <a href="https://plaid.com/legal/#privacy-statement" target="_blank">Plaid's Privacy Policy</a>.</td>
+      <td>You — using your own Plaid developer credentials (experimental integration). Governed by <a href="https://plaid.com/legal/#privacy-statement" target="_blank">Plaid's Privacy Policy</a>.</td>
     </tr>
   </table>
 
@@ -291,14 +288,15 @@
   <p>
     If you choose to use the optional AI or banking features, you provide your own API
     keys. These keys are stored in your device's local application data directory
-    (the Electron <code>userData</code> path) using the operating system's standard
-    file system. They are:
+    (the Electron <code>userData</code> path) encrypted with OS-backed credential storage. They are excluded from ordinary backups and are not returned to the application UI. Legacy plaintext credentials migrate when secure storage is available; failures preserve the original file for recovery. They are:
   </p>
   <ul>
     <li>Never transmitted to the developer</li>
-    <li>Never stored on any external server</li>
+    <li>Stored by Chisel locally in encrypted form; your API provider also holds its own issued credentials</li>
     <li>Only used to make direct calls from your device to the respective third-party API</li>
   </ul>
+
+  <p>Disconnecting a bank asks Plaid to revoke the linked item. Clearing local credentials or application data removes local tokens but does not revoke access at the provider. Reminders operate while the desktop application is running.</p>
 
   <h2>6. Microsoft Store</h2>
   <p>
@@ -339,3 +337,4 @@
 </div>
 </body>
 </html>
+

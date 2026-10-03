@@ -5,11 +5,13 @@
  * clicks "Generate AI Tips," the page sends their live debt and budget data to
  * Claude and replaces the static list with personalized recommendations.
  */
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Lightbulb, RefreshCw, Home, Utensils, Car, Tv, Zap, TrendingUp, DollarSign, HelpCircle, Star } from 'lucide-react';
 import type { Debt, MonthlyBudget } from '../types';
 import type { SavingsTip } from '../types';
 import { formatCurrency } from '../lib/calculations';
+import { ensureAIConsent } from '../lib/aiConsent';
+import { parseSavingsTips } from '../lib/aiResponses';
 
 interface Props {
   debts: Debt[];
@@ -153,6 +155,7 @@ export default function Tips({ debts, budgets }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [aiGenerated, setAiGenerated] = useState(false);
+  const requestInFlight = useRef(false);
 
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   const currentBudget = budgets.find((b) => b.month === new Date().toISOString().slice(0, 7));
@@ -161,7 +164,11 @@ export default function Tips({ debts, budgets }: Props) {
   const surplus = currentBudget ? currentBudget.income + extraIncome - totalExpenses : 0;
 
   async function generateAITips() {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    if (!await ensureAIConsent()) { requestInFlight.current = false; return; }
     if (!window.electronAPI) {
+      requestInFlight.current = false;
       setError('AI tips require the desktop app. Using curated tips instead.');
       return;
     }
@@ -171,14 +178,14 @@ export default function Tips({ debts, budgets }: Props) {
     const prompt = `I need 8 personalized money-saving tips for someone with the following financial situation:
 
 ${debts.length > 0 ? `Debts:
-${debts.map((d) => `- ${d.name}: $${d.balance.toLocaleString()} at ${d.interestRate}% APR, $${d.minimumPayment}/mo minimum`).join('\n')}
-Total debt: $${totalDebt.toLocaleString()}` : 'No debts entered yet, assume typical debt situation.'}
+${debts.map((d) => `- Debt ${debts.indexOf(d) + 1}: ${formatCurrency(d.balance)} at ${d.interestRate}% APR, ${formatCurrency(d.minimumPayment)}/mo minimum`).join('\n')}
+Total debt: ${formatCurrency(totalDebt)}` : 'No debts entered yet, assume typical debt situation.'}
 
 ${currentBudget ? `Monthly Budget:
-- Income: $${currentBudget.income.toLocaleString()}
-- Expenses: $${totalExpenses.toLocaleString()}
-- Surplus/Deficit: $${surplus.toLocaleString()}
-- Expense categories: ${currentBudget.expenses.map((e) => `${e.category} $${e.amount}`).join(', ')}` : ''}
+- Income: ${formatCurrency(currentBudget.income)}
+- Expenses: ${formatCurrency(totalExpenses)}
+- Surplus/Deficit: ${formatCurrency(surplus)}
+- Expense categories: ${currentBudget.expenses.map((e) => `${e.category} ${formatCurrency(e.amount)}`).join(', ')}` : ''}
 
 Return ONLY a JSON object (no markdown, no explanation) with this exact structure:
 {
@@ -200,19 +207,13 @@ Make tips highly specific to their situation. Prioritize highest-impact actions.
 
     try {
       const raw = await window.electronAPI.getTips(prompt);
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Invalid response format');
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed.tips && Array.isArray(parsed.tips)) {
-        setTips(parsed.tips);
-        setAiGenerated(true);
-      } else {
-        throw new Error('Invalid tips format');
-      }
+      setTips(parseSavingsTips(raw));
+      setAiGenerated(true);
     } catch (e: any) {
       setError(e.message || 'Failed to generate AI tips. Showing curated tips.');
       setTips(STATIC_TIPS);
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
   }
@@ -285,3 +286,4 @@ Make tips highly specific to their situation. Prioritize highest-impact actions.
     </div>
   );
 }
+

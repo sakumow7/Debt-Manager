@@ -1,5 +1,7 @@
 # Architecture
 
+> Consumer hardening update: storage, credential, IPC, consent and build behavior described here may reflect older releases. [CONSUMER_HARDENING.md](CONSUMER_HARDENING.md) describes the current implementation and supersedes older examples. Development and regression tests now use Node 24 LTS.
+
 This document provides a deep technical reference for the Debt Manager application architecture.
 
 ---
@@ -346,3 +348,4 @@ Vite dev server / dist/index.html
 **HashRouter** is used instead of BrowserRouter because Electron loads files via the `file://` protocol in production, which does not support HTML5 history-based routing.
 
 **Vite in development** proxies nothing — the renderer connects directly to `http://localhost:5173`. Electron's `loadURL('http://localhost:5173')` is guarded by `app.isPackaged === false`. In production, Electron loads `dist/index.html` directly from disk.
+

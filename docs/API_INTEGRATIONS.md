@@ -1,5 +1,7 @@
 # API Integrations
 
+> Consumer hardening update: storage, credential, IPC, consent and build behavior described here may reflect older releases. [CONSUMER_HARDENING.md](CONSUMER_HARDENING.md) describes the current implementation and supersedes older examples. Development and regression tests now use Node 24 LTS.
+
 This document covers the two external API integrations: Anthropic Claude and Plaid Banking.
 
 ---
@@ -267,3 +269,4 @@ connect-src: 'self'
              https://production.plaid.com
              https://cdn.plaid.com
 ```
+

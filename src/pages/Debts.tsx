@@ -1,3 +1,4 @@
+import { currencySymbol } from '../lib/calculations';
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, CreditCard, ChevronDown, ChevronUp, DollarSign, Calendar, RefreshCw, BarChart2, Upload } from 'lucide-react';
 import Modal from '../components/ui/Modal';
@@ -36,7 +37,7 @@ interface CelebrationData {
   totalPaid: number;
 }
 
-// ─── Credit Score Impact Estimator ────────────────────────────────────────────
+// ─── Credit Utilization ────────────────────────────────────────────
 
 function CreditScorePanel({ debts }: { debts: Debt[] }) {
   const cards = debts.filter((d) => d.type === 'credit_card');
@@ -51,12 +52,11 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
         <div className="flex items-center gap-2 mb-3">
           <BarChart2 size={16} className="text-gray-400" />
-          <h2 className="text-white font-semibold">Credit Score Impact Estimator</h2>
+          <h2 className="text-white font-semibold">Credit Utilization</h2>
         </div>
         <p className="text-gray-500 text-xs leading-relaxed">
           Add a <strong className="text-gray-300">Credit Limit</strong> to your credit cards
-          (via the edit button) to estimate your credit utilization and its impact on your score.
-          Utilization is roughly 30% of a FICO score.
+          (via the edit button) to calculate utilization. This app does not predict your credit score.
         </p>
       </div>
     );
@@ -69,27 +69,21 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
 
   let impact = '';
   let impactColor = '';
-  let scoreDelta = '';
   if (utilization < 10) {
     impact = 'Excellent';
     impactColor = 'text-emerald-400';
-    scoreDelta = '+40–60 pts';
   } else if (utilization < 30) {
     impact = 'Good';
     impactColor = 'text-blue-400';
-    scoreDelta = '+10–30 pts';
   } else if (utilization < 50) {
     impact = 'Fair';
     impactColor = 'text-amber-400';
-    scoreDelta = '−10–20 pts';
   } else if (utilization < 75) {
     impact = 'Poor';
     impactColor = 'text-orange-400';
-    scoreDelta = '−30–50 pts';
   } else {
     impact = 'Very Poor';
     impactColor = 'text-red-400';
-    scoreDelta = '−80–120 pts';
   }
 
   const barWidth = Math.min(100, utilization);
@@ -99,10 +93,10 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
       <div className="flex items-center gap-2 mb-4">
         <BarChart2 size={16} className="text-gray-400" />
-        <h2 className="text-white font-semibold">Credit Score Impact Estimator</h2>
+        <h2 className="text-white font-semibold">Credit Utilization</h2>
       </div>
       <p className="text-gray-500 text-xs mb-4">
-        Credit utilization accounts for ~30% of your FICO score. Based on {cardsWithLimit.length} credit card{cardsWithLimit.length > 1 ? 's' : ''} with a limit set
+        Utilization is one of several credit factors. Based on {cardsWithLimit.length} credit card{cardsWithLimit.length > 1 ? 's' : ''} with a limit set
         {cardsMissingLimit > 0 && <span className="text-amber-400/80"> ({cardsMissingLimit} card{cardsMissingLimit > 1 ? 's' : ''} missing a limit — add one to include {cardsMissingLimit > 1 ? 'them' : 'it'})</span>}.
       </p>
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -115,8 +109,8 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
           <p className="text-gray-500 text-xs mt-0.5">Rating</p>
         </div>
         <div className="bg-gray-800 rounded-xl p-3 text-center">
-          <p className={`font-bold text-sm ${impactColor}`}>{scoreDelta}</p>
-          <p className="text-gray-500 text-xs mt-0.5">Est. Score Impact</p>
+          <p className={`font-bold text-sm ${impactColor}`}>{formatCurrency(totalLimit)}</p>
+          <p className="text-gray-500 text-xs mt-0.5">Recorded Limits</p>
         </div>
       </div>
       <div className="space-y-1">
@@ -139,7 +133,7 @@ function CreditScorePanel({ debts }: { debts: Debt[] }) {
         </div>
       </div>
       <p className="text-gray-600 text-xs mt-3">
-        Tip: Keeping utilization under 10% can maximize your credit score improvement.
+        Lower utilization may help your credit profile. Score changes depend on your full credit history and the scoring model; point changes cannot be predicted here.
       </p>
     </div>
   );
@@ -190,7 +184,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
     // Credit limit only applies to credit cards; undefined when blank or N/A.
     const creditLimit = form.type === 'credit_card' && !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
-    if (!form.name || isNaN(balance) || isNaN(interestRate) || isNaN(minimumPayment)) return;
+    if (!form.name.trim() || ![balance, interestRate, minimumPayment].every(Number.isFinite) || balance < 0 || balance > 1e9 || interestRate < 0 || interestRate > 100 || minimumPayment < 0 || minimumPayment > 1e9 || !Number.isInteger(dueDate) || dueDate < 1 || dueDate > 31) { addToast('Enter valid non-negative amounts, APR from 0–100%, and a due day from 1–31.', 'error'); return; }
 
     const now = new Date().toISOString();
 
@@ -230,10 +224,10 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
   function handleLogPayment() {
     if (!showPayment) return;
     const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0 || amount > showPayment.balance) { addToast('Payment must be positive and no greater than the recorded balance.', 'error'); return; }
 
     const now = new Date().toISOString();
-    const newBalance = Math.max(0, showPayment.balance - amount);
+    const newBalance = Math.max(0, Math.round((showPayment.balance - amount) * 100) / 100);
     const isPaidOff = newBalance === 0;
 
     setDebts((prev) =>
@@ -419,7 +413,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
         </div>
       )}
 
-      {/* Credit Score Impact Estimator */}
+      {/* Credit Utilization */}
       {debts.length > 0 && <CreditScorePanel debts={debts} />}
 
       {/* Add/Edit Modal */}
@@ -442,7 +436,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
                 </select>
               </div>
               <div>
-                <label className="text-gray-400 text-xs block mb-1.5">Current Balance ($) *</label>
+                <label className="text-gray-400 text-xs block mb-1.5">Current Balance ({currencySymbol()}) *</label>
                 <input type="number" min="0" step="0.01" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="0.00" value={form.balance} onChange={(e) => setForm({ ...form, balance: e.target.value })} />
               </div>
               <div>
@@ -450,7 +444,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
                 <input type="number" min="0" max="100" step="0.01" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. 24.99" value={form.interestRate} onChange={(e) => setForm({ ...form, interestRate: e.target.value })} />
               </div>
               <div>
-                <label className="text-gray-400 text-xs block mb-1.5">Minimum Payment ($) *</label>
+                <label className="text-gray-400 text-xs block mb-1.5">Minimum Payment ({currencySymbol()}) *</label>
                 <input type="number" min="0" step="0.01" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="0.00" value={form.minimumPayment} onChange={(e) => setForm({ ...form, minimumPayment: e.target.value })} />
               </div>
               <div>
@@ -459,7 +453,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
               </div>
               {form.type === 'credit_card' && (
                 <div className="col-span-2">
-                  <label className="text-gray-400 text-xs block mb-1.5">Credit Limit ($) <span className="text-gray-600">— optional, enables credit utilization estimate</span></label>
+                  <label className="text-gray-400 text-xs block mb-1.5">Credit Limit ({currencySymbol()}) <span className="text-gray-600">— optional, enables credit utilization estimate</span></label>
                   <input type="number" min="0" step="0.01" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. 10000" value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} />
                 </div>
               )}
@@ -493,7 +487,7 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
               </div>
             </div>
             <div>
-              <label className="text-gray-400 text-xs block mb-1.5">Payment Amount ($) *</label>
+              <label className="text-gray-400 text-xs block mb-1.5">Payment Amount ({currencySymbol()}) *</label>
               <input type="number" min="0" step="0.01" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder={String(showPayment.minimumPayment)} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} autoFocus />
             </div>
             <div>
@@ -532,3 +526,4 @@ export default function Debts({ debts, setDebts, addToast }: Props) {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+import { currencySymbol } from '../lib/calculations';
 import { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -47,7 +48,7 @@ export default function NetWorth({ assets, setAssets, debts, addToast }: Props) 
 
   function handleSubmit() {
     const value = parseFloat(form.value);
-    if (!form.name || isNaN(value) || value < 0) return;
+    if (!form.name.trim() || !Number.isFinite(value) || value < 0 || value > 1e9) { addToast('Enter a name and a valid non-negative value.', 'error'); return; }
     const now = new Date().toISOString();
     if (editAsset) {
       setAssets((prev) =>
@@ -273,7 +274,7 @@ export default function NetWorth({ assets, setAssets, debts, addToast }: Props) 
               </select>
             </div>
             <div>
-              <label className="text-gray-400 text-xs block mb-1.5">Current Value ($) *</label>
+              <label className="text-gray-400 text-xs block mb-1.5">Current Value ({currencySymbol()}) *</label>
               <input
                 type="number"
                 min="0"
@@ -326,3 +327,4 @@ export default function NetWorth({ assets, setAssets, debts, addToast }: Props) 
     </div>
   );
 }
+

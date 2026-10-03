@@ -3,14 +3,12 @@ import Papa from 'papaparse';
 import { Upload, X, Check, AlertCircle, FileText } from 'lucide-react';
 import type { Debt, DebtType } from '../../types';
 import { DEBT_TYPE_LABELS, DEBT_COLORS } from '../../types';
-import { generateId } from '../../lib/utils';
+import { debtsFromCSV, type ColumnKey } from '../../lib/csvImport';
 
 interface Props {
   onImport: (debts: Debt[]) => void;
   onClose: () => void;
 }
-
-type ColumnKey = 'name' | 'balance' | 'interestRate' | 'minimumPayment' | 'type' | 'dueDate' | 'creditor' | 'notes' | 'ignore';
 
 const COLUMN_OPTIONS: { value: ColumnKey; label: string }[] = [
   { value: 'name',           label: 'Debt Name' },
@@ -23,16 +21,6 @@ const COLUMN_OPTIONS: { value: ColumnKey; label: string }[] = [
   { value: 'notes',          label: 'Notes' },
   { value: 'ignore',         label: '— Ignore this column —' },
 ];
-
-const TYPE_MAP: Record<string, DebtType> = {
-  'credit card': 'credit_card', 'credit': 'credit_card', 'cc': 'credit_card',
-  'student': 'student_loan', 'student loan': 'student_loan',
-  'mortgage': 'mortgage', 'home': 'mortgage',
-  'auto': 'auto', 'car': 'auto', 'vehicle': 'auto',
-  'personal': 'personal',
-  'medical': 'medical', 'hospital': 'medical',
-  'other': 'other',
-};
 
 function guessColumn(header: string): ColumnKey {
   const h = header.toLowerCase().trim();
@@ -47,15 +35,8 @@ function guessColumn(header: string): ColumnKey {
   return 'ignore';
 }
 
-function parseNumber(val: string): number {
-  return parseFloat(val.replace(/[$,%\s]/g, '')) || 0;
-}
-
-function parseType(val: string): DebtType {
-  return TYPE_MAP[val.toLowerCase().trim()] ?? 'other';
-}
-
 export default function CSVImportModal({ onImport, onClose }: Props) {
+  const [allRows, setAllRows] = useState<string[][]>([]);
   const [rows, setRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<ColumnKey[]>([]);
@@ -66,13 +47,18 @@ export default function CSVImportModal({ onImport, onClose }: Props) {
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setRows([]); setAllRows([]); setHeaders([]); setMapping([]); setError('');
+    if (file.size > 2 * 1024 * 1024) { setError('CSV exceeds 2 MB.'); return; }
     setFileName(file.name);
-    setError('');
     Papa.parse<string[]>(file, {
       skipEmptyLines: true,
       complete: (result) => {
+        if (result.errors.length) { setError('CSV contains malformed rows. Please correct the file.'); return; }
+        if (result.data.length > 10001) { setError('Import is limited to 10,000 rows.'); return; }
         if (result.data.length < 2) { setError('File must have a header row and at least one data row.'); return; }
         const [head, ...data] = result.data;
+        if (head.length > 100) { setError('CSV has too many columns.'); return; }
+        setAllRows(data);
         setHeaders(head);
         setRows(data.slice(0, 5)); // preview first 5
         setMapping(head.map(guessColumn));
@@ -83,51 +69,8 @@ export default function CSVImportModal({ onImport, onClose }: Props) {
   }
 
   function doImport() {
-    Papa.parse<string[]>(fileName ? undefined as any : undefined, {});
-    // Re-parse full file
-    if (!fileRef.current?.files?.[0]) return;
-    Papa.parse<string[]>(fileRef.current.files[0], {
-      skipEmptyLines: true,
-      complete: (result) => {
-        const [, ...data] = result.data;
-        const nameIdx   = mapping.indexOf('name');
-        const balIdx    = mapping.indexOf('balance');
-        const aprIdx    = mapping.indexOf('interestRate');
-        const minIdx    = mapping.indexOf('minimumPayment');
-        const typeIdx   = mapping.indexOf('type');
-        const dueIdx    = mapping.indexOf('dueDate');
-        const credIdx   = mapping.indexOf('creditor');
-        const noteIdx   = mapping.indexOf('notes');
-
-        if (nameIdx === -1 || balIdx === -1) { setError('You must map at least "Debt Name" and "Current Balance".'); return; }
-
-        const now = new Date().toISOString();
-        const debts: Debt[] = data
-          .filter(row => row[nameIdx]?.trim())
-          .map(row => {
-            const type = typeIdx >= 0 ? parseType(row[typeIdx]) : 'other';
-            const balance = parseNumber(row[balIdx]);
-            return {
-              id: generateId(),
-              name: row[nameIdx].trim(),
-              creditor: credIdx >= 0 ? row[credIdx]?.trim() ?? '' : '',
-              type,
-              balance,
-              originalBalance: balance,
-              interestRate: aprIdx >= 0 ? parseNumber(row[aprIdx]) : 0,
-              minimumPayment: minIdx >= 0 ? parseNumber(row[minIdx]) : 0,
-              dueDate: dueIdx >= 0 ? Math.min(31, Math.max(1, parseInt(row[dueIdx]) || 15)) : 15,
-              notes: noteIdx >= 0 ? row[noteIdx]?.trim() : undefined,
-              color: DEBT_COLORS[type],
-              createdAt: now,
-              updatedAt: now,
-              payments: [],
-            };
-          });
-
-        onImport(debts);
-      },
-    });
+    try { onImport(debtsFromCSV(allRows, mapping)); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Import failed. Existing debts were preserved.'); }
   }
 
   const hasRequiredMapping = mapping.includes('name') && mapping.includes('balance');
@@ -227,3 +170,4 @@ export default function CSVImportModal({ onImport, onClose }: Props) {
     </div>
   );
 }
+

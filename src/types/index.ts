@@ -102,7 +102,10 @@ export interface AttackPlanResult {
   strategy: 'avalanche' | 'snowball' | 'minimum';
   totalInterestPaid: number;
   totalMonths: number;
-  payoffDate: string;
+  payoffDate: string | null;
+  isPaidOff: boolean;
+  startingBalance: number;
+  remainingBalance: number;
   monthlySchedule: MonthlyScheduleItem[];
   debtPayoffInfo: DebtPayoffInfo[];
   monthlyPayment: number;
@@ -186,7 +189,7 @@ export interface PlaidAccount {
     limit?: number;
   };
   institution?: string;
-  accessToken: string;
+  connectionId: string;
 }
 
 export interface AppSettings {
@@ -197,6 +200,7 @@ export interface AppSettings {
   theme?: 'dark' | 'light';
   biweeklyPayments?: boolean;
   notificationsEnabled?: boolean;
+  aiConsent?: boolean;
 }
 
 // ─── Display Constants ────────────────────────────────────────────────────────
@@ -249,3 +253,4 @@ export const EXPENSE_CATEGORIES = [
   'Debt Payments',
   'Other',
 ];
+
