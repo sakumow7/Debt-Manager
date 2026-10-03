@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import type { Debt, AttackPlanResult, AppSettings } from '../types';
 
 function currency(n: number, code = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(n);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: code, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
 function monthsToText(months: number): string {
@@ -57,9 +57,9 @@ export function exportPayoffPlanPDF(
   const totalDebt = debts.reduce((s, d) => s + d.balance, 0);
   const summaryItems = [
     { label: 'Total Debt', value: currency(totalDebt, cur), color: [239, 68, 68] as [number, number, number] },
-    { label: 'Debt-Free Date', value: plan.payoffDate, color: [16, 185, 129] as [number, number, number] },
-    { label: 'Total Interest', value: currency(plan.totalInterestPaid, cur), color: [245, 158, 11] as [number, number, number] },
-    { label: 'Time to Freedom', value: monthsToText(plan.totalMonths), color: [59, 130, 246] as [number, number, number] },
+    { label: 'Debt-Free Date', value: plan.payoffDate ?? 'Not reached', color: [16, 185, 129] as [number, number, number] },
+    { label: plan.isPaidOff ? 'Total Interest' : 'Projected Interest', value: currency(plan.totalInterestPaid, cur), color: [245, 158, 11] as [number, number, number] },
+    { label: 'Time to Freedom', value: plan.isPaidOff ? monthsToText(plan.totalMonths) : 'Beyond projection', color: [59, 130, 246] as [number, number, number] },
   ];
 
   const cardW = (w - 28 - 9) / 4;
@@ -86,6 +86,9 @@ export function exportPayoffPlanPDF(
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.text('My Debts', 14, y);
+  doc.setFontSize(7);
+  doc.text('Estimate: fixed APR / 12, fixed entered minimums, monthly cent rounding. Lender statements may differ.', 14, y + 4);
+  y += 5;
   y += 4;
 
   autoTable(doc, {
@@ -179,3 +182,4 @@ export function exportPayoffPlanPDF(
 
   doc.save(`chisel-payoff-plan-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
+

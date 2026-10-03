@@ -2,14 +2,15 @@
  * Shared utility helpers used across the application.
  */
 
-/** Generates a collision-resistant unique ID using timestamp + random suffix. */
+/** Generates a collision-resistant unique ID using the platform cryptographic UUID generator. */
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return crypto.randomUUID();
 }
 
 /** Returns the current month as a YYYY-MM string. */
 export function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7);
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 /**
@@ -26,3 +27,4 @@ export function ordinal(n: number): string {
     default: return 'th';
   }
 }
+

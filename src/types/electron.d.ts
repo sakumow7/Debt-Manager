@@ -1,13 +1,11 @@
 interface ElectronAPI {
   // Config
   getConfig: () => Promise<{
-    anthropicKey?: string;
-    plaidClientId?: string;
-    plaidSecret?: string;
-    plaidEnv?: string;
-    plaidAccessTokens?: { institution: string; token: string; accountIds: string[] }[];
+    anthropicKeyConfigured: boolean; plaidSecretConfigured: boolean; plaidClientId?: string; plaidEnv?: string;
+    aiConsent: boolean; secureStorageAvailable: boolean; connections: { id: string; accountIds: string[] }[];
   }>;
   setConfig: (updates: Record<string, unknown>) => Promise<boolean>;
+  clearConfig: () => Promise<boolean>;
 
   // AI
   chat: (
@@ -19,13 +17,8 @@ interface ElectronAPI {
   // Plaid
   plaidCreateLinkToken: () => Promise<string>;
   plaidExchangeToken: (publicToken: string) => Promise<string>;
-  plaidGetAccounts: (accessToken: string) => Promise<PlaidAccountRaw[]>;
-  plaidGetLiabilities: (accessToken: string) => Promise<PlaidLiabilitiesResponse>;
-  plaidGetTransactions: (
-    accessToken: string,
-    startDate: string,
-    endDate: string
-  ) => Promise<PlaidTransaction[]>;
+  plaidGetAccounts: (connectionId: string) => Promise<PlaidAccountRaw[]>;
+  plaidDisconnect: (connectionId: string) => Promise<boolean>;
 
   // Notifications
   showNotification?: (title: string, body: string) => Promise<boolean>;
@@ -84,3 +77,4 @@ declare global {
 }
 
 export {};
+

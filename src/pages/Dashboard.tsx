@@ -1,3 +1,4 @@
+import { budgetSurplus } from '../lib/budgetCalculations';
 /**
  * Dashboard — the app's home screen.
  *
@@ -77,7 +78,7 @@ export default function Dashboard({ debts, budgets, settings, scheduledPayments,
 
   const currentBudget = budgets.find((b) => b.month === new Date().toISOString().slice(0, 7));
   const totalExpenses = currentBudget ? currentBudget.expenses.reduce((s, e) => s + e.amount, 0) : 0;
-  const surplus = currentBudget ? currentBudget.income - totalExpenses : 0;
+  const surplus = budgetSurplus(currentBudget, debts).recurring;
 
   const chartData = useMemo(() => {
     const schedule = bestPlan.monthlySchedule;
@@ -88,8 +89,8 @@ export default function Dashboard({ debts, budgets, settings, scheduledPayments,
       { month: 'Now', balance: debts.reduce((s, d) => s + d.balance, 0) },
       ...schedule
         .filter((_, i) => i % step === 0)
-        .map((s) => ({ month: `M${s.month}`, balance: Math.round(s.totalBalance) })),
-      { month: 'Free!', balance: 0 },
+        .map((s) => ({ month: `M${s.month}`, balance: s.totalBalance })),
+      { month: bestPlan.isPaidOff ? 'Paid off' : 'Projection ends', balance: bestPlan.remainingBalance },
     ];
   }, [bestPlan, debts]);
 
@@ -156,8 +157,8 @@ export default function Dashboard({ debts, budgets, settings, scheduledPayments,
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Debt" value={formatCurrency(totalDebt)} sub={`${debts.length} active debt${debts.length !== 1 ? 's' : ''}`} icon={DollarSign} color="bg-red-500/80" />
-        <StatCard label="Debt-Free Date" value={bestPlan.totalMonths > 0 ? formatDate(bestPlan.payoffDate) : '—'} sub={bestPlan.totalMonths > 0 ? monthsToYearsMonths(bestPlan.totalMonths) : 'Add extra payment'} icon={Calendar} color="bg-emerald-600/80" />
-        <StatCard label="Monthly Payment" value={formatCurrency(totalMin + settings.extraMonthlyPayment)} sub={`${formatCurrency(totalMin)} minimum`} icon={TrendingDown} color="bg-blue-600/80" />
+        <StatCard label="Estimated Debt-Free Date" value={bestPlan.payoffDate && bestPlan.totalMonths > 0 ? formatDate(bestPlan.payoffDate) : bestPlan.isPaidOff ? '—' : 'Not reached'} sub={bestPlan.isPaidOff && bestPlan.totalMonths > 0 ? monthsToYearsMonths(bestPlan.totalMonths) : bestPlan.isPaidOff ? 'No active debt' : 'Increase payment'} icon={Calendar} color="bg-emerald-600/80" />
+        <StatCard label="Monthly Payment" value={formatCurrency(bestPlan.monthlyPayment)} sub={`${formatCurrency(totalMin)} minimum`} icon={TrendingDown} color="bg-blue-600/80" />
         <StatCard label="Avg. Interest" value={`${avgRate.toFixed(1)}%`} sub={`${formatCurrency(bestPlan.totalInterestPaid)} total interest`} icon={Percent} color="bg-amber-600/80" />
       </div>
 
@@ -315,3 +316,4 @@ export default function Dashboard({ debts, budgets, settings, scheduledPayments,
     </div>
   );
 }
+

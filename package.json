@@ -1,14 +1,16 @@
 {
   "name": "chisel",
   "version": "1.2.1",
-  "description": "Chisel Finance — Cut through debt. A precision debt payoff desktop application.",
+  "description": "Chisel Finance \u2014 Cut through debt. A precision debt payoff desktop application.",
   "main": "electron-dist/electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "build": "vite build && tsc -p tsconfig.electron.json",
+    "build": "npm run typecheck && vite build && tsc -p tsconfig.electron.json",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types --import ./tests/register.mjs --test --test-isolation=none tests/*.test.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -43,7 +45,7 @@
   "build": {
     "appId": "com.chiselfinance.app",
     "productName": "Chisel Finance",
-    "copyright": "Copyright © 2025",
+    "copyright": "Copyright \u00a9 2025",
     "directories": {
       "output": "release"
     },
@@ -85,5 +87,8 @@
       "publisherDisplayName": "YOUR_DISPLAY_NAME",
       "publisher": "CN=YOUR_CN_STRING"
     }
+  },
+  "engines": {
+    "node": ">=24 <25"
   }
 }

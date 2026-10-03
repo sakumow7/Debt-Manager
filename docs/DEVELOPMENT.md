@@ -1,5 +1,7 @@
 # Development Guide
 
+> Consumer hardening update: storage, credential, IPC, consent and build behavior described here may reflect older releases. [CONSUMER_HARDENING.md](CONSUMER_HARDENING.md) describes the current implementation and supersedes older examples. Development and regression tests now use Node 24 LTS.
+
 This guide covers everything needed to work on the Debt Manager codebase: environment setup, project conventions, development workflow, and common tasks.
 
 ---
@@ -329,3 +331,4 @@ The API key isn't saved. Go to **Settings** → enter key → **Save API Keys**.
 ### Plaid sandbox `INVALID_CREDENTIALS`
 
 Use the test credentials: username `user_good`, password `pass_good`. Ensure the Plaid environment is set to `sandbox` in Settings.
+

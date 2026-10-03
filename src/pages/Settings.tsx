@@ -1,8 +1,10 @@
+import { currencySymbol } from '../lib/calculations';
 import { useState, useEffect, useCallback } from 'react';
 import { Save, Eye, EyeOff, CheckCircle, XCircle, Link2, Trash2, RefreshCw, Download, Upload, AlertCircle, Building2, Sun, Moon, Bell, BellOff, CalendarDays } from 'lucide-react';
 import { usePlaidLink } from 'react-plaid-link';
 import type { AppSettings, Debt, MonthlyBudget } from '../types';
 import type { ToastType } from '../hooks/useToast';
+import { createBackup, parseBackup, getData, replaceData, emptyData } from '../lib/dataStore';
 
 interface Props {
   settings: AppSettings;
@@ -55,6 +57,8 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
   const [testError, setTestError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [keyConfigured, setKeyConfigured] = useState(false);
+  const [plaidConfigured, setPlaidConfigured] = useState(false);
   const [plaidLinking, setPlaidLinking] = useState(false);
   const [plaidError, setPlaidError] = useState('');
   const [plaidLinkToken, setPlaidLinkToken] = useState<string | null>(null);
@@ -63,30 +67,53 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
 
   useEffect(() => {
     if (!window.electronAPI) return;
-    window.electronAPI.getConfig().then((config) => {
-      if (config.anthropicKey) setAnthropicKey(config.anthropicKey);
-      if (config.plaidClientId) setPlaidClientId(config.plaidClientId);
-      if (config.plaidSecret) setPlaidSecret(config.plaidSecret);
-      if (config.plaidEnv) setPlaidEnv(config.plaidEnv);
-    });
-  }, []);
+    window.electronAPI.getConfig().then(config => {
+      setKeyConfigured(config.anthropicKeyConfigured); setPlaidConfigured(config.plaidSecretConfigured);
+      setPlaidClientId(config.plaidClientId || ''); setPlaidEnv(config.plaidEnv || 'sandbox');
+      setSettings(prev => ({ ...prev, aiConsent: config.aiConsent,
+        plaidAccounts: prev.plaidAccounts.map(a => ({ ...a, connectionId: config.connections.find(c => c.accountIds.includes(a.account_id))?.id || a.connectionId })) }));
+      if (!config.secureStorageAvailable) addToast('Secure credential storage is unavailable. Offline features still work.', 'warning');
+    }).catch(error => addToast(error.message || 'Could not read credentials.', 'error'));
+  }, [addToast, setSettings]);
 
   async function saveApiKeys() {
     if (!window.electronAPI) return;
     setSaving(true);
-    await window.electronAPI.setConfig({ anthropicKey, plaidClientId, plaidSecret, plaidEnv });
-    setSaving(false);
-    setSaved(true);
-    addToast('API keys saved', 'success');
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      await window.electronAPI.setConfig({ ...(anthropicKey.trim() ? { anthropicKey: anthropicKey.trim() } : {}),
+        plaidClientId: plaidClientId.trim(), ...(plaidSecret.trim() ? { plaidSecret: plaidSecret.trim() } : {}), plaidEnv });
+      const config = await window.electronAPI.getConfig();
+      setKeyConfigured(config.anthropicKeyConfigured); setPlaidConfigured(config.plaidSecretConfigured);
+      setAnthropicKey(''); setPlaidSecret(''); setSaved(true); addToast('Credentials saved securely', 'success');
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Credentials were not saved.', 'error'); }
+    finally { setSaving(false); }
+  }
+
+  async function changeAIConsent(value: boolean) {
+    if (!window.electronAPI) return;
+    try {
+      await window.electronAPI.setConfig({ aiConsent: value });
+      setSettings(prev => ({ ...prev, aiConsent: value }));
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Could not update AI consent.', 'error'); }
+  }
+
+  async function clearCredentials() {
+    if (!window.electronAPI || !confirm('Remove all API credentials and local bank tokens? Disconnect banks first to revoke access with Plaid.')) return;
+    try {
+      await window.electronAPI.clearConfig(); setKeyConfigured(false); setPlaidConfigured(false);
+      setAnthropicKey(''); setPlaidSecret('');
+      setSettings(prev => ({ ...prev, aiConsent: false, plaidAccounts: [] }));
+      addToast('Local credentials removed', 'success');
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Could not clear credentials.', 'error'); }
   }
 
   async function testAnthropicKey() {
-    if (!window.electronAPI || !anthropicKey) return;
+    if (!window.electronAPI || (!anthropicKey && !keyConfigured)) return;
     setTestStatus('testing');
     setTestError('');
     try {
-      await window.electronAPI.setConfig({ anthropicKey });
+      if (anthropicKey.trim()) await window.electronAPI.setConfig({ anthropicKey: anthropicKey.trim() });
       const result = await window.electronAPI.chat([{ role: 'user', content: 'Say "API key works!" in exactly 3 words.' }], 'You are a helpful assistant.');
       if (result) { setTestStatus('ok'); addToast('API key is working', 'success'); }
       else setTestStatus('error');
@@ -100,18 +127,17 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
   const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
     if (!window.electronAPI) return;
     try {
-      const accessToken = await window.electronAPI.plaidExchangeToken(publicToken);
-      const accounts = await window.electronAPI.plaidGetAccounts(accessToken);
+      const connectionId = await window.electronAPI.plaidExchangeToken(publicToken);
+      const accounts = await window.electronAPI.plaidGetAccounts(connectionId);
       const institution = metadata.institution?.name || 'Bank';
-      const newAccounts = accounts.map((a: any) => ({ ...a, institution, accessToken }));
-      setSettings(prev => ({ ...prev, plaidAccounts: [...(prev.plaidAccounts || []), ...newAccounts] }));
-      await window.electronAPI.setConfig({ plaidAccessTokens: [{ institution, token: accessToken, accountIds: accounts.map((a: any) => a.account_id) }] });
+      const newAccounts = accounts.map((a: any) => ({ ...a, institution, connectionId }));
+      setSettings(prev => ({ ...prev, plaidAccounts: [...prev.plaidAccounts.filter(a => !newAccounts.some((n: any) => n.account_id === a.account_id)), ...newAccounts] }));
       addToast(`Connected ${institution}`, 'success');
       setPlaidLinkToken(null);
     } catch (e: any) {
       setPlaidError(e.message || 'Failed to link bank account');
       addToast('Bank link failed', 'error');
-    }
+    } finally { setPlaidLinking(false); }
   }, [addToast, setSettings]);
 
   const { open: openPlaidLink, ready: plaidReady } = usePlaidLink({
@@ -125,7 +151,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     setPlaidLinking(true);
     setPlaidError('');
     try {
-      await window.electronAPI.setConfig({ plaidClientId, plaidSecret, plaidEnv });
+      await window.electronAPI.setConfig({ plaidClientId, ...(plaidSecret.trim() ? { plaidSecret: plaidSecret.trim() } : {}), plaidEnv });
       const linkToken = await window.electronAPI.plaidCreateLinkToken();
       setPlaidLinkToken(linkToken);
     } catch (e: any) {
@@ -144,63 +170,67 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
 
   async function syncBankAccounts() {
     if (!window.electronAPI || settings.plaidAccounts.length === 0) return;
-    for (const account of settings.plaidAccounts) {
+    let successes = 0; let failures = 0;
+    const groups = new Set(settings.plaidAccounts.map(a => a.connectionId));
+    for (const connectionId of groups) {
       try {
-        const accounts = await window.electronAPI.plaidGetAccounts(account.accessToken);
-        const matchedAccount = accounts.find((a: { account_id: string; balances: { current: number | null } }) => a.account_id === account.account_id);
-        if (matchedAccount) {
-          const balance = Math.abs(matchedAccount.balances.current || 0);
-          setDebts((prev) =>
-            prev.map((d) =>
-              d.plaidAccountId === account.account_id ? { ...d, balance, updatedAt: new Date().toISOString() } : d
-            )
-          );
-        }
-      } catch (e) {
-        console.error('Sync error:', e);
-      }
+        if (!connectionId) throw new Error('Reconnect this bank.');
+        const accounts = await window.electronAPI.plaidGetAccounts(connectionId);
+        const linkedIds = settings.plaidAccounts.filter(a => a.connectionId === connectionId).map(a => a.account_id);
+        const relevant = accounts.filter(a => linkedIds.includes(a.account_id));
+        if (relevant.length !== linkedIds.length || relevant.some(a => a.balances.current == null || !Number.isFinite(a.balances.current) || Math.abs(a.balances.current) > 1e9)) throw new Error('Bank balance unavailable.');
+        setDebts(prev => prev.map(d => {
+          const account = relevant.find(a => a.account_id === d.plaidAccountId);
+          if (!account) return d;
+          if (account.type !== 'credit' && account.type !== 'loan') throw new Error('Linked account is not a debt account.');
+          return { ...d, balance: Math.round(Math.abs(account.balances.current!) * 100) / 100, updatedAt: new Date().toISOString() };
+        }));
+        successes++;
+      } catch { failures++; }
     }
-    addToast('Bank accounts synced', 'success');
+    addToast(failures ? `${successes} bank connection(s) synced; ${failures} failed. Failed balances were preserved. Reconnect or try again.` : 'Bank balances synced', failures ? 'warning' : 'success');
+  }
+
+  async function disconnectBank(connectionId: string) {
+    if (!window.electronAPI || !confirm('Disconnect this bank and revoke its Plaid access?')) return;
+    try {
+      await window.electronAPI.plaidDisconnect(connectionId);
+      setSettings(prev => ({ ...prev, plaidAccounts: prev.plaidAccounts.filter(a => a.connectionId !== connectionId) }));
+      addToast('Bank disconnected', 'success');
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Bank disconnect failed.', 'error'); }
   }
 
   function exportData() {
-    const data = { debts, budgets, settings, exportedAt: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `chisel-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast('Backup exported', 'success');
+    try {
+      const blob = new Blob([createBackup(getData())], { type: 'application/json' });
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = `chisel-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url);
+      addToast('Complete backup exported without credentials. Keep this financial data private.', 'success');
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Backup failed.', 'error'); }
   }
 
-  function importData(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function importData(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-        if (data.debts) setDebts(data.debts);
-        if (data.budgets) setBudgets(data.budgets);
-        if (data.settings) setSettings(data.settings);
-        addToast('Data imported successfully', 'success');
-      } catch {
-        addToast('Invalid backup file', 'error');
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error('Backup exceeds 20 MB.');
+      const next = parseBackup(await file.text());
+      if (!confirm('Replace all current financial records with this backup? Export a backup first. Banks must be reconnected.')) return;
+      // Revoke AI consent before changing financial records; old consent does not apply to restored data.
+      if (window.electronAPI) {
+        const config = await window.electronAPI.getConfig();
+        if (config.aiConsent) await window.electronAPI.setConfig({ aiConsent: false });
       }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+      replaceData(next); window.location.reload();
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Invalid backup. Existing data was preserved.', 'error'); }
   }
 
-  function clearAllData() {
-    if (!confirm('Are you sure you want to delete ALL your data? This cannot be undone.')) return;
-    // Wipe every persisted key (debts, budgets, settings, chat, scheduled payments,
-    // assets, onboarding flag) and reload so all in-memory state re-initializes from
-    // empty storage — avoids stale data lingering in components we don't own here.
-    localStorage.clear();
-    window.location.reload();
+  async function clearAllData() {
+    if (!confirm('Delete ALL financial records and local credentials? This cannot be undone. To revoke bank access, disconnect banks first.')) return;
+    try {
+      if (window.electronAPI) await window.electronAPI.clearConfig();
+      replaceData(emptyData()); localStorage.removeItem('dm-reminder-last-check'); window.location.reload();
+    } catch (error) { addToast(error instanceof Error ? error.message : 'Could not clear data.', 'error'); }
   }
 
   const isDark = settings.theme !== 'light';
@@ -271,7 +301,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
               </select>
             </div>
             <div>
-              <label className="text-gray-400 text-xs block mb-1.5">Currency</label>
+              <label className="text-gray-400 text-xs block mb-1.5">Display Currency</label>
               <select
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
                 value={settings.currency}
@@ -286,28 +316,30 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
             </div>
           </div>
           <div>
-            <label className="text-gray-400 text-xs block mb-1.5">Default Extra Monthly Payment ($)</label>
+            <label className="text-gray-400 text-xs block mb-1.5">Default Extra Monthly Payment ({currencySymbol()})</label>
             <div className="relative max-w-xs">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{currencySymbol()}</span>
               <input
                 type="number"
                 min="0"
                 step="50"
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-8 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
                 value={settings.extraMonthlyPayment}
-                onChange={(e) => setSettings((p) => ({ ...p, extraMonthlyPayment: parseFloat(e.target.value) || 0 }))}
+                onChange={(e) => setSettings((p) => ({ ...p, extraMonthlyPayment: Math.max(0, Math.min(1e9, parseFloat(e.target.value) || 0)) }))}
               />
             </div>
           </div>
         </div>
       </Section>
 
+      <p className="text-gray-500 text-xs">All records use one currency. Changing the display currency relabels amounts; it does not convert balances using exchange rates.</p>
+
       {/* Anthropic API */}
       <Section title="🤖 Anthropic Claude API">
         <div className="space-y-4">
           <p className="text-gray-500 text-xs leading-relaxed">
-            Required for AI Chat and personalized Tips. Get your API key from{' '}
-            <span className="text-emerald-400">console.anthropic.com</span>. Your key is stored locally and never shared.
+            Optional for AI Chat and personalized Tips. API usage may incur provider charges. Get your API key from{' '}
+            <span className="text-emerald-400">console.anthropic.com</span>. Your key is protected by OS credential storage and sent only to Anthropic for authentication.
           </p>
           <div>
             <label className="text-gray-400 text-xs block mb-1.5">API Key</label>
@@ -316,7 +348,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
                 <input
                   type={showAnthropicKey ? 'text' : 'password'}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 pr-10 font-mono"
-                  placeholder="sk-ant-..."
+                  placeholder={keyConfigured ? 'Key saved — enter a replacement' : 'sk-ant-...'}
                   value={anthropicKey}
                   onChange={(e) => { setAnthropicKey(e.target.value); setTestStatus('idle'); }}
                 />
@@ -326,7 +358,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
               </div>
               <button
                 onClick={testAnthropicKey}
-                disabled={!anthropicKey || testStatus === 'testing' || !isElectron}
+                disabled={(!anthropicKey && !keyConfigured) || !settings.aiConsent || testStatus === 'testing' || !isElectron}
                 className="px-3 py-2.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5"
               >
                 {testStatus === 'testing' ? <RefreshCw size={13} className="animate-spin" /> : testStatus === 'ok' ? <CheckCircle size={13} className="text-emerald-400" /> : testStatus === 'error' ? <XCircle size={13} className="text-red-400" /> : null}
@@ -337,6 +369,11 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
             {testStatus === 'error' && <p className="text-red-400 text-xs mt-1.5">{testError || 'Connection failed. Check your API key.'}</p>}
           </div>
         </div>
+      </Section>
+
+      <Section title="AI Data Sharing">
+        <p className="text-gray-400 text-sm mb-3">When you use AI, debt balances, rates, payments, budget totals, and your messages are sent to Anthropic. Debt names and creditors are replaced with numbered labels. Avoid personal information in messages. Provider terms and usage charges apply. AI guidance can be wrong; payoff estimates come from the app's calculator.</p>
+        <ToggleRow icon={AlertCircle} iconClass="text-amber-400" label="Allow AI data sharing" description="Optional. You can turn this off at any time." value={settings.aiConsent ?? false} onChange={changeAIConsent} />
       </Section>
 
       {/* Plaid Banking */}
@@ -367,7 +404,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
             </div>
             <div>
               <label className="text-gray-400 text-xs block mb-1.5">Secret Key</label>
-              <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono" placeholder="Secret" value={plaidSecret} onChange={(e) => setPlaidSecret(e.target.value)} />
+              <input type="password" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono" placeholder={plaidConfigured ? 'Secret saved — enter a replacement' : 'Secret'} value={plaidSecret} onChange={(e) => setPlaidSecret(e.target.value)} />
             </div>
             <div>
               <label className="text-gray-400 text-xs block mb-1.5">Environment</label>
@@ -396,7 +433,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={syncBankAccounts} className="text-xs text-emerald-400 hover:text-emerald-300">Sync</button>
-                    <button onClick={() => setSettings((p) => ({ ...p, plaidAccounts: p.plaidAccounts.filter((_, j) => j !== i) }))} className="text-gray-500 hover:text-red-400">
+                    <button onClick={() => disconnectBank(acc.connectionId)} className="text-gray-500 hover:text-red-400">
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -408,7 +445,7 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
           <div className="flex gap-3">
             <button
               onClick={connectBank}
-              disabled={!plaidClientId || !plaidSecret || plaidLinking || !isElectron}
+              disabled={!plaidClientId || (!plaidSecret && !plaidConfigured) || plaidLinking || !isElectron}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors"
             >
               <Link2 size={14} /> {plaidLinking ? 'Connecting...' : 'Connect Bank'}
@@ -434,10 +471,12 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
         </button>
       )}
 
+      {isElectron && <button onClick={clearCredentials} className="text-red-400 text-sm underline">Remove all local credentials</button>}
+
       {/* Data Management */}
       <Section title="Data Management">
         <div className="space-y-3">
-          <p className="text-gray-500 text-xs">All data is stored locally on your device. Back up regularly to avoid losing your data.</p>
+          <p className="text-gray-500 text-xs">Backups include debts, budgets, assets, scheduled payments, settings, and chat history. Credentials and bank connections are excluded. Backups are not encrypted; keep them private.</p>
           <div className="flex gap-3 flex-wrap">
             <button onClick={exportData} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">
               <Download size={15} /> Export Backup
@@ -459,3 +498,4 @@ export default function Settings({ settings, setSettings, debts, setDebts, budge
     </div>
   );
 }
+

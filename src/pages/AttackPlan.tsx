@@ -1,3 +1,4 @@
+import { currencySymbol } from '../lib/calculations';
 import { useMemo, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -39,14 +40,14 @@ function PlanCard({ result, label, icon: Icon, color, borderColor, saving, isSel
       <div className="space-y-3">
         <div className="flex justify-between">
           <span className="text-gray-500 text-sm">Debt-Free</span>
-          <span className="text-white font-semibold text-sm">{result.totalMonths > 0 ? formatDate(result.payoffDate) : '—'}</span>
+          <span className="text-white font-semibold text-sm">{result.payoffDate && result.totalMonths > 0 ? formatDate(result.payoffDate) : result.isPaidOff ? '—' : 'Not reached'}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500 text-sm">Time</span>
-          <span className="text-white text-sm">{result.totalMonths > 0 ? monthsToYearsMonths(result.totalMonths) : '—'}</span>
+          <span className="text-white text-sm">{result.isPaidOff && result.totalMonths > 0 ? monthsToYearsMonths(result.totalMonths) : result.isPaidOff ? '—' : 'Beyond projection'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500 text-sm">Total Interest</span>
+          <span className="text-gray-500 text-sm">{result.isPaidOff ? 'Total Interest' : 'Projected Interest'}</span>
           <span className="text-red-400 text-sm">{formatCurrency(result.totalInterestPaid)}</span>
         </div>
         <div className="flex justify-between">
@@ -168,11 +169,11 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
     const promoMonths = parseInt(promoPeriod);
     const postAPR = parseFloat(postPromoAPR) / 100 / 12;
     const payment = parseFloat(monthlyPayment);
-    const currentAPR = (sourceDebt?.interestRate || 20) / 100 / 12;
+    const currentAPR = (sourceDebt?.interestRate ?? 0) / 100 / 12;
 
-    if (isNaN(amount) || amount <= 0 || isNaN(payment) || payment <= 0) return null;
+    if (!sourceDebt || ![amount, fee, promoMonths, postAPR, payment].every(Number.isFinite) || amount <= 0 || amount > sourceDebt.balance || amount > 1e9 || payment <= 0 || payment > 1e9 || fee < 0 || fee > 1 || postAPR < 0 || postAPR > 1 / 12 || promoMonths < 0 || promoMonths > 600) return null;
 
-    const feeAmount = amount * fee;
+    const feeAmount = Math.round(amount * fee * 100) / 100;
     let transferBalance = amount + feeAmount;
     let transferInterest = 0;
 
@@ -183,10 +184,10 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
     }
 
     // Post-promo period
-    if (!isNaN(postAPR) && postAPR > 0) {
+    {
       let postMonths = 0;
       while (transferBalance > 0.01 && postMonths < 600) {
-        const interest = transferBalance * postAPR;
+        const interest = Math.round(transferBalance * postAPR * 100) / 100;
         transferBalance += interest;
         transferInterest += interest;
         const pmt = Math.min(payment, transferBalance);
@@ -200,7 +201,7 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
     let currentInterest = 0;
     let currentMonths = 0;
     while (currentBalance > 0.01 && currentMonths < 600) {
-      const interest = currentBalance * currentAPR;
+      const interest = Math.round(currentBalance * currentAPR * 100) / 100;
       currentBalance += interest;
       currentInterest += interest;
       const pmt = Math.min(payment, currentBalance);
@@ -211,7 +212,7 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
     const transferTotal = feeAmount + transferInterest;
     const savings = currentInterest - transferTotal;
 
-    return { feeAmount, transferInterest, transferTotal, currentInterest, savings, currentMonths };
+    return { feeAmount, transferInterest, transferTotal, currentInterest, savings, currentMonths, isPaidOff: transferBalance < 0.01 && currentBalance < 0.01 };
   }, [transferAmount, transferFee, promoPeriod, postPromoAPR, monthlyPayment, sourceDebt]);
 
   return (
@@ -240,7 +241,7 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
           </div>
         )}
         <div>
-          <label className="text-gray-400 text-xs block mb-1.5">Transfer Amount ($)</label>
+          <label className="text-gray-400 text-xs block mb-1.5">Transfer Amount ({currencySymbol()})</label>
           <input type="number" min="0" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. 5000" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} />
         </div>
         <div>
@@ -258,7 +259,7 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
           <input type="number" min="0" max="100" step="0.1" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. 24.99" value={postPromoAPR} onChange={(e) => setPostPromoAPR(e.target.value)} />
         </div>
         <div>
-          <label className="text-gray-400 text-xs block mb-1.5">Monthly Payment ($)</label>
+          <label className="text-gray-400 text-xs block mb-1.5">Monthly Payment ({currencySymbol()})</label>
           <input type="number" min="0" className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. 300" value={monthlyPayment} onChange={(e) => setMonthlyPayment(e.target.value)} />
         </div>
       </div>
@@ -277,14 +278,14 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
             <div>
               <p className="text-gray-500 text-xs mb-1.5">Without Transfer (Current APR)</p>
               <div className="space-y-1.5">
-                <div className="flex justify-between text-sm"><span className="text-gray-400">Interest ({sourceDebt?.interestRate || '?'}% APR)</span><span className="text-white">{formatCurrency(result.currentInterest)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-400">Interest ({sourceDebt?.interestRate ?? '?'}% APR)</span><span className="text-white">{formatCurrency(result.currentInterest)}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-gray-400">Months</span><span className="text-white">{monthsToYearsMonths(result.currentMonths)}</span></div>
                 <div className="flex justify-between text-sm font-semibold border-t border-gray-700 pt-1.5"><span className="text-gray-300">Total Cost</span><span className="text-red-400">{formatCurrency(result.currentInterest)}</span></div>
               </div>
             </div>
           </div>
           <div className={`rounded-xl p-3 text-center ${result.savings > 0 ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
-            {result.savings > 0 ? (
+            {!result.isPaidOff ? <p className="text-amber-400 text-sm">At least one scenario is not paid off within the projection. Increase your payment before comparing total savings.</p> : result.savings > 0 ? (
               <p className="text-emerald-400 font-semibold text-sm">Transfer saves you {formatCurrency(result.savings)}!</p>
             ) : (
               <p className="text-amber-400 font-semibold text-sm">Transfer costs {formatCurrency(-result.savings)} more — increase monthly payment</p>
@@ -303,7 +304,7 @@ function BalanceTransferCalc({ debts }: { debts: Debt[] }) {
 export default function AttackPlan({ debts, settings, setSettings, scheduledPayments, addToast }: Props) {
   const [extra, setExtra] = useState(String(settings.extraMonthlyPayment));
 
-  const extraNum = parseFloat(extra) || 0;
+  const extraNum = Math.max(0, Math.min(1e9, parseFloat(extra) || 0));
   const lumps = useMemo(() => scheduledToLumps(scheduledPayments), [scheduledPayments]);
   const biweekly = settings.biweeklyPayments ?? false;
 
@@ -348,7 +349,7 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-white text-2xl font-bold">Debt Attack Plan</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Compare strategies and accelerate your debt payoff</p>
+          <p className="text-gray-400 text-sm mt-0.5">Compare estimated payoff strategies under fixed monthly assumptions</p>
         </div>
         {selectedPlan && (
           <button
@@ -360,13 +361,16 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
         )}
       </div>
 
+      <p className="text-gray-400 text-sm">Estimates use fixed entered APRs and minimum payments, monthly interest (APR / 12), and cent rounding. Actual lender statements may differ. Biweekly mode averages a 13th annual payment across months and requires additional annual funds. Scheduled lump sums are additional to the monthly budget.</p>
+      {!selectedPlan.isPaidOff && <p role="alert" className="text-amber-300">Debt is not paid off within this projection. Remaining balance: {formatCurrency(selectedPlan.remainingBalance)}. Increase payments or review the rates and balances.</p>}
+
       {/* Extra Payment + Biweekly */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
         <h2 className="text-white font-semibold mb-1">Extra Monthly Payment</h2>
         <p className="text-gray-500 text-sm mb-4">Amount above minimums to apply toward debt each month. Even small amounts make a big difference.</p>
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-xs">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">{currencySymbol()}</span>
             <input
               type="number"
               min="0"
@@ -404,7 +408,7 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
           </p>
         )}
 
-        {extraNum > 0 && avalanche.totalMonths > 0 && minimum.totalMonths > 0 && (
+        {extraNum > 0 && avalanche.isPaidOff && minimum.isPaidOff && avalanche.totalMonths > 0 && minimum.totalMonths > 0 && (
           <div className="mt-4 grid grid-cols-3 gap-3">
             <div className="bg-gray-800 rounded-xl p-3 text-center">
               <p className="text-emerald-400 font-bold">{monthsToYearsMonths(minimum.totalMonths - avalanche.totalMonths)}</p>
@@ -424,8 +428,8 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
 
       {/* Strategy Comparison */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <PlanCard result={avalanche} label="Avalanche" icon={Flame} color="text-red-400" borderColor="border-red-500" saving={minimum.totalInterestPaid - avalanche.totalInterestPaid} isSelected={selected === 'avalanche'} onSelect={() => setSettings((p) => ({ ...p, preferredStrategy: 'avalanche' }))} />
-        <PlanCard result={snowball} label="Snowball" icon={Snowflake} color="text-blue-400" borderColor="border-blue-500" saving={minimum.totalInterestPaid - snowball.totalInterestPaid} isSelected={selected === 'snowball'} onSelect={() => setSettings((p) => ({ ...p, preferredStrategy: 'snowball' }))} />
+        <PlanCard result={avalanche} label="Avalanche" icon={Flame} color="text-red-400" borderColor="border-red-500" saving={minimum.isPaidOff && avalanche.isPaidOff ? minimum.totalInterestPaid - avalanche.totalInterestPaid : undefined} isSelected={selected === 'avalanche'} onSelect={() => setSettings((p) => ({ ...p, preferredStrategy: 'avalanche' }))} />
+        <PlanCard result={snowball} label="Snowball" icon={Snowflake} color="text-blue-400" borderColor="border-blue-500" saving={minimum.isPaidOff && snowball.isPaidOff ? minimum.totalInterestPaid - snowball.totalInterestPaid : undefined} isSelected={selected === 'snowball'} onSelect={() => setSettings((p) => ({ ...p, preferredStrategy: 'snowball' }))} />
         <PlanCard result={minimum} label="Minimum Only" icon={Minus} color="text-gray-400" borderColor="border-gray-600" isSelected={false} onSelect={() => {}} />
       </div>
 
@@ -531,7 +535,7 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
           <div>
             <p className="text-amber-300 font-semibold text-sm">Pro Tip: The Power of Extra Payments</p>
             <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-              Even adding <strong className="text-white">$50–100/month</strong> above minimums can save thousands in interest. Biweekly payments add a 13th payment each year at no extra monthly budget.
+              Even adding <strong className="text-white">$50–100/month</strong> above minimums can save thousands in interest. Biweekly payments add a 13th payment each year and require one additional monthly payment per year.
             </p>
           </div>
         </div>
@@ -539,3 +543,4 @@ export default function AttackPlan({ debts, settings, setSettings, scheduledPaym
     </div>
   );
 }
+

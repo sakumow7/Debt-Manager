@@ -11,6 +11,7 @@ import { Send, Bot, User, RefreshCw, MessageCircle, AlertCircle } from 'lucide-r
 import type { Debt, ChatMessage, MonthlyBudget } from '../types';
 import { generateDebtContext, formatCurrency } from '../lib/calculations';
 import { generateId } from '../lib/utils';
+import { ensureAIConsent } from '../lib/aiConsent';
 
 interface Props {
   debts: Debt[];
@@ -70,6 +71,7 @@ export default function Chat({ debts, budgets, messages, setMessages }: Props) {
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const requestInFlight = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -97,35 +99,27 @@ Guidelines:
 - Be realistic about timelines and challenges
 - Always emphasize the importance of emergency funds (3-6 months expenses)
 - Celebrate progress and milestones
+- Do not promise exact payoff dates or credit scores; explain assumptions and suggest checking lender statements.
 - Keep responses concise but thorough`;
 
   async function sendMessage(content: string) {
-    if (!content.trim() || loading) return;
-
-    const userMessage: ChatMessage = { id: generateId(), role: 'user', content: content.trim(), timestamp: new Date().toISOString() };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setLoading(true);
-    setError('');
-
-    if (!window.electronAPI) {
-      setLoading(false);
-      setError('AI chat requires the desktop app. Please run this as an Electron application.');
-      return;
-    }
-
+    if (!content.trim() || requestInFlight.current) return;
+    requestInFlight.current = true; setLoading(true); setError('');
     try {
-      // Cap history at the 20 most recent messages to stay within Claude's context limit
-      // while still giving the model enough conversational context for follow-ups.
-      const history = [...messages, userMessage].slice(-20).map((m) => ({ role: m.role, content: m.content }));
+      if (!await ensureAIConsent()) return;
+      if (!window.electronAPI) throw new Error('AI chat requires the desktop app.');
+      if (content.length > 20000) throw new Error('Message is too long. Limit messages to 20,000 characters.');
+      const userMessage: ChatMessage = { id: generateId(), role: 'user', content: content.trim(), timestamp: new Date().toISOString() };
+      setMessages(prev => [...prev, userMessage]); setInput('');
+      const recent = [...messages, userMessage].slice(-20);
+      // Keep the first retained turn a user message for the provider API.
+      while (recent.length > 1 && recent[0].role !== 'user') recent.shift();
+      const history = recent.map(m => ({ role: m.role, content: m.content }));
       const response = await window.electronAPI.chat(history, systemPrompt);
       const assistantMessage: ChatMessage = { id: generateId(), role: 'assistant', content: response, timestamp: new Date().toISOString() };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (e: any) {
-      setError(e.message || 'Failed to get response. Please check your API key in Settings.');
-    } finally {
-      setLoading(false);
-    }
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) { setError(error instanceof Error ? error.message : 'Failed to get or save the AI response.'); }
+    finally { requestInFlight.current = false; setLoading(false); }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -244,3 +238,4 @@ Guidelines:
     </div>
   );
 }
+
